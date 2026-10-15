@@ -1,0 +1,2557 @@
+---
+title: "Seurat-CyTOF-QBC_fused_dataset_clustering_stimulations.Rmd"
+output: html_document
+---
+
+```{r}
+#install required packages
+install.packages("Seurat")
+#install.packages("flowCore")
+install.packages("readxl")
+install.packages("tidyverse")
+
+install.packages('BiocManager')
+BiocManager::install("slingshot")
+BiocManager::install('glmGamPoi')
+```
+
+```{r}
+# load required packages
+library(Seurat)
+library(flowCore)
+library(readxl)
+library(tidyverse)
+library(slingshot)
+library(ggplot2)
+library(dplyr)
+library(SingleCellExperiment)
+library(RColorBrewer)
+library(pheatmap)
+library(monocle3)
+```
+
+```{r}
+# Install bnlearn and Rgraphviz
+install.packages("bnlearn")
+BiocManager::install("Rgraphviz")
+
+# Load libraries
+library(bnlearn)
+library(Rgraphviz)
+```
+
+
+```{r}
+# Define the directory where you want to save plots
+output_dir <- "/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/cross_species_QBC_markers_clustering_stimulations"
+```
+
+
+```{r}
+# Function to process each dataset
+process_dataset <- function(data_path, sample_name) {
+  # Input validation
+  if(missing(data_path) || !is.character(data_path)) {
+    stop("data_path must be provided as a character string")
+  }
+  if(missing(sample_name) || !is.character(sample_name)) {
+    stop("sample_name must be provided as a character string")
+  }
+  if(!file.exists(data_path)) {
+    stop("Data file does not exist: ", data_path)
+  }
+
+  # Read the data with diagnostic
+  tryCatch({
+    print(paste("Processing", sample_name, "dataset"))
+    data <- read.csv(data_path)
+    print(paste("Initial dimensions:", nrow(data), "x", ncol(data)))
+    
+    if(ncol(data) == 0 || nrow(data) == 0) {
+      stop("Empty dataset loaded")
+    }
+  }, error = function(e) {
+    stop("Error reading CSV file: ", e$message)
+  })
+  
+  # Remove the first column (assumed to be an index)
+  if(ncol(data) > 1) {
+    data <- data[, -1]
+    print(paste("Dimensions after removing index:", nrow(data), "x", ncol(data)))
+  } else {
+    stop("Dataset has too few columns after removing index")
+  }
+  
+  # Set cell IDs
+  cell_ids <- paste0(sample_name, "_cell", seq_len(nrow(data)))
+  rownames(data) <- cell_ids
+  
+  # Identify and Extract metadata BEFORE modifying column names
+  metadata_cols <- c("QBC_annotation", "QBC_donor", "stimulation", "CyTOF_annotation", "CyTOF_donor", "tsne1", "tsne2")
+  print("Looking for metadata columns:")
+  existing_metadata <- intersect(metadata_cols, colnames(data))
+  print(paste("Found metadata columns:", paste(existing_metadata, collapse=", ")))
+  
+  # Extract metadata with validation
+  if(length(existing_metadata) > 0) {
+    metadata <- data[, existing_metadata, drop = FALSE]
+    print("\nMetadata check:")
+    print(paste("Metadata dimensions:", nrow(metadata), "x", ncol(metadata)))
+    print(paste("Metadata columns:", paste(colnames(metadata), collapse=", ")))
+  } else {
+    metadata <- data.frame(row.names = cell_ids)
+    warning("No metadata columns found in dataset")
+  }
+  
+  # Define QBC and CyTOF column ranges
+  qbc_indices <- 1:134  # CD101 to integrinB7
+  cytof_indices <- 137:176  # CD235a to pMAPKAPK2(T334)
+  
+  # Validate column ranges
+  if(max(qbc_indices) > ncol(data) || max(cytof_indices) > ncol(data)) {
+    stop("Column indices exceed data dimensions")
+  }
+  
+  # Function to clean marker names
+  clean_marker_name <- function(name) {
+    # Remove any .1, .2, etc. suffixes
+    name <- gsub("\\.\\d+$", "", name)
+    return(name)
+  }
+  
+  # Clean and add modality suffixes to marker columns
+  colnames(data)[qbc_indices] <- paste0(sapply(colnames(data)[qbc_indices], clean_marker_name), "-QBC")
+  colnames(data)[cytof_indices] <- paste0(sapply(colnames(data)[cytof_indices], clean_marker_name), "-CyTOF")
+  
+  # Print column names at the range boundaries for verification
+  print("\nChecking column ranges:")
+  print("QBC range start columns:")
+  print(head(colnames(data)[qbc_indices], 3))
+  print("QBC range end columns:")
+  print(tail(colnames(data)[qbc_indices], 3))
+  print("CyTOF range start columns:")
+  print(head(colnames(data)[cytof_indices], 3))
+  print("CyTOF range end columns:")
+  print(tail(colnames(data)[cytof_indices], 3))
+  
+  # Update marker columns after renaming
+  marker_cols <- setdiff(colnames(data), metadata_cols)
+  
+  # Extract counts matrix (only marker columns)
+  counts <- data[, marker_cols, drop = FALSE]  # Added drop = FALSE to preserve matrix structure
+  print("\nCounts matrix check:")
+  print(paste("Counts dimensions:", nrow(counts), "x", ncol(counts)))
+  print(paste("Any NAs in counts before transpose:", any(is.na(counts))))
+  
+  # Extract metadata with validation
+  if(length(existing_metadata) > 0) {
+    metadata <- data[, existing_metadata, drop = FALSE]
+    print("\nMetadata check:")
+    print(paste("Metadata dimensions:", nrow(metadata), "x", ncol(metadata)))
+    print(paste("Metadata columns:", paste(colnames(metadata), collapse=", ")))
+  } else {
+    metadata <- data.frame(row.names = cell_ids)
+    warning("No metadata columns found in dataset")
+  }
+  
+  # Transpose the counts matrix to features x cells
+  counts_t <- t(counts)
+  print(paste("Any NAs after transpose:", any(is.na(counts_t))))
+  
+  # Ensure cell IDs are set correctly
+  colnames(counts_t) <- cell_ids
+  
+  # Convert counts_t to a numeric matrix
+  counts_t <- tryCatch({
+    counts_matrix <- as.matrix(counts_t)
+    mode(counts_matrix) <- "numeric"
+    counts_matrix
+  }, error = function(e) {
+    stop("Error converting counts to numeric matrix: ", e$message)
+  })
+  
+  print(paste("Any NAs after numeric conversion:", any(is.na(counts_t))))
+  
+  if(any(is.na(counts_t))) {
+    na_features <- rownames(counts_t)[rowSums(is.na(counts_t)) > 0]
+    print("Features with NAs:")
+    print(na_features)
+    warning("NAs found in counts matrix")
+  }
+  
+  # Create Seurat object with error handling
+  tryCatch({
+    seurat_obj <- CreateSeuratObject(counts = counts_t, 
+                                    assay = "Protein", 
+                                    meta.data = metadata, 
+                                    project = sample_name)
+    
+    # Set default assay to 'Protein'
+    DefaultAssay(seurat_obj) <- "Protein"
+    
+    # Add sample name as metadata
+    seurat_obj$sample <- sample_name
+    
+    print(paste("\nFinal Seurat object dimensions:", nrow(seurat_obj), "x", ncol(seurat_obj)))
+    
+    return(seurat_obj)
+  }, error = function(e) {
+    stop("Error creating Seurat object: ", e$message)
+  })
+}
+```
+
+
+# Load in .csv files from after MARIO single cell matching (datasets were sub-sampled before single cell MARIO matching)
+```{r}
+# Define the data file paths as strings
+human_data_path <- "/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/MARIO_CyTOF_and_QBC_single_cell_matching/matching_20_nov_2024/combined_df_QBC_CyTOF_human.csv"
+rhesus_data_path <- "/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/MARIO_CyTOF_and_QBC_single_cell_matching/matching_20_nov_2024/combined_df_QBC_CyTOF_rhesus.csv"
+```
+
+```{r}
+# Process Human and Rhesus datasets by Creating single Seurat objects directly
+human_seurat <- process_dataset(data_path = human_data_path, sample_name = "Human")
+rhesus_seurat <- process_dataset(data_path = rhesus_data_path, sample_name = "Rhesus")
+```
+
+```{r}
+# Normalize and Identify variable features for Human Seurat Object using CLR normalization
+DefaultAssay(human_seurat) <- "Protein"
+human_seurat <- NormalizeData(human_seurat, normalization.method = "CLR", margin = 1, assay = "Protein")
+human_seurat <- FindVariableFeatures(human_seurat, selection.method = "vst", nfeatures = 2000, assay = "Protein")
+```
+
+```{r}
+# Set default assay
+DefaultAssay(rhesus_seurat) <- "Protein"
+
+# Get the raw data
+raw_data <- GetAssayData(rhesus_seurat, slot = "counts")
+
+# Remove features with any NAs
+na_features <- rownames(raw_data)[rowSums(is.na(raw_data)) > 0]
+if(length(na_features) > 0) {
+    print(paste("Removing features with NAs:", paste(na_features, collapse=", ")))
+    # Subset the object
+    rhesus_seurat <- subset(rhesus_seurat, features = setdiff(rownames(raw_data), na_features))
+    
+    # Verify dimensions after subsetting
+    print(paste("Dimensions after removing NA features:", 
+               nrow(GetAssayData(rhesus_seurat, slot = "counts")), "x",
+               ncol(GetAssayData(rhesus_seurat, slot = "counts"))))
+}
+
+# Normalize data
+rhesus_seurat <- NormalizeData(rhesus_seurat, 
+                           normalization.method = "CLR", 
+                           margin = 1, 
+                           assay = "Protein")
+
+# Get number of features after normalization
+n_features <- nrow(GetAssayData(rhesus_seurat, slot = "counts"))
+print(paste("Number of features before FindVariableFeatures:", n_features))
+
+# Find variable features with adjusted nfeatures parameter
+rhesus_seurat <- FindVariableFeatures(rhesus_seurat, 
+                                  selection.method = "vst", 
+                                  nfeatures = min(2000, n_features), 
+                                  assay = "Protein",
+                                  verbose = FALSE)
+```
+
+```{r}
+#Check marker names - Human
+rownames(human_seurat[["Protein"]])
+```
+
+```{r}
+#Check marker names - Rhesus
+rownames(rhesus_seurat[["Protein"]])
+```
+
+#Specify cross-species 60 QBC markers that are reactivity to both human and rhesus cells (validated by Bjorson-Hooper et al 2022) to use for clustering
+```{r}
+cross_species_markers_qbc_panel <- c("CD1c-QBC", "CD2-QBC", "CD9-QBC", "CD11b-QBC", "CD11c-QBC", "CD14-QBC", "CD16-QBC", "CD19-QBC", "CD20-QBC", "CD27-QBC", "CD28-QBC", "CD29-QBC", "CD31-QBC", "CD32-QBC", "CD35-QBC", "CD39-QBC", "CD40-QBC", "CD41-QBC", "CD47-QBC", "CD48-QBC", "CD49a-QBC", "CD49d-QBC", "CD49f-QBC", "CD52-QBC", "CD56-QBC", "CD58-QBC", "CD63-QBC", "CD64-QBC", "CD69-QBC", "CD79b-QBC", "CD81-QBC", "CD83-QBC", "CD86-QBC", "CD93-QBC", "CD95-QBC", "CD101-QBC", "CD107a-QBC", "CD115-QBC", "CD119-QBC", "CD122-QBC", "CD127-QBC", "CD161-QBC", "CD162-QBC", "CD163-QBC", "CD172a-QBC", "CD195-QBC", "CD196-QBC", "CD226-QBC", "CD268-QBC", "CD274-QBC", "CD278-QBC", "CD279-QBC", "CD314-QBC", "CX3CR1-QBC", "FcRI-QBC", "HLA.ABC-QBC", "HLA.DR-QBC", "IgM-QBC", "integrinB7-QBC")
+```
+
+
+#Scale the Data
+##ScaleData() standardizes the expression levels of the specified features across cells
+##By specifying features, you’re instructing Seurat to scale only the cross-species markers
+##Z-score scale
+```{r}
+# Scale human_integrated dataset using cross-species markers derived QBC readings
+human_seurat <- ScaleData(human_seurat, features = cross_species_markers_qbc_panel)
+```
+
+```{r}
+# Scale rhesus_integrated dataset using cross-species markers derived QBC readings
+rhesus_seurat <- ScaleData(rhesus_seurat, features = cross_species_markers_qbc_panel)
+```
+
+#PCA
+```{r}
+# Run PCA on human_integrated using ONLY cross-species markers derived QBC readings
+human_seurat <- RunPCA(human_seurat, features = cross_species_markers_qbc_panel)
+
+#The elbow plot helps visualize the amount of variation captured by each PC
+#A visualization that is useful for determining how many PCs to include
+#Look for the point where the explained variance starts to level off (“the elbow”) to decide how many PCs to use
+
+file_path <- file.path(output_dir, "human_elbowplot.pdf")
+pdf(file_path)
+ElbowPlot(human_seurat)
+dev.off()
+```
+
+```{r}
+# Run PCA on rhesus_integrated using ONLY cross-species markers derived QBC readings
+rhesus_seurat <- RunPCA(rhesus_seurat, features = cross_species_markers_qbc_panel)
+
+#The elbow plot helps visualize the amount of variation captured by each PC
+#A visualization that is useful for determining how many PCs to include
+#Look for the point where the explained variance starts to level off (“the elbow”) to decide how many PCs to use
+
+file_path <- file.path(output_dir, "rhesus_elbowplot.pdf")
+pdf(file_path)
+ElbowPlot(rhesus_seurat)
+dev.off()
+```
+
+#UMAP
+```{r}
+# Run UMAP using selected PCs
+human_seurat <- RunUMAP(human_seurat, dims = 1:10)
+```
+
+```{r}
+# Run UMAP using selected PCs
+rhesus_seurat <- RunUMAP(rhesus_seurat, dims = 1:8)
+```
+
+#Perform Clustering
+```{r}
+#FindNeighbors() constructs a KNN graph based on the PCs
+human_seurat <- FindNeighbors(human_seurat, dims = 1:10)
+
+#computing the neighborhood graph and find clusters
+#FindClusters() identifies clusters using the Louvain algorithm
+#The resolution parameter affects the number of clusters; higher values lead to more clusters
+human_seurat <- FindClusters(human_seurat, resolution = 0.5)
+```
+
+```{r}
+#FindNeighbors() constructs a KNN graph based on the PCs
+rhesus_seurat <- FindNeighbors(rhesus_seurat, dims = 1:8)
+
+#computing the neighborhood graph and find clusters
+#FindClusters() identifies clusters using the Louvain algorithm
+#The resolution parameter affects the number of clusters; higher values lead to more clusters
+rhesus_seurat <- FindClusters(rhesus_seurat, resolution = 0.5)
+```
+
+#Visualize the Clusters on UMAP - Human
+```{r}
+# UMAP plot colored by seurat clusters - human
+
+file_path_umap <- file.path(output_dir, "human_UMAP_seurat_clusters.pdf")
+pdf(file_path_umap, width = 10, height = 8)
+DimPlot(human_seurat, reduction = "umap", group.by = "seurat_clusters", label = FALSE, repel = FALSE)
+dev.off()
+```
+
+```{r}
+# UMAP plot colored by QBC Donor - human
+
+file_path_umap <- file.path(output_dir, "human_UMAP_QBC_donor.pdf")
+pdf(file_path_umap, width = 10, height = 8)
+DimPlot(human_seurat, reduction = "umap", group.by = "QBC_donor", label = FALSE, repel = FALSE)
+dev.off()
+```
+
+```{r}
+# UMAP plot colored by CyTOF Donor - human
+
+file_path_umap <- file.path(output_dir, "human_UMAP_CyTOF_donor.pdf")
+pdf(file_path_umap, width = 16, height = 8)
+DimPlot(human_seurat, reduction = "umap", group.by = "CyTOF_donor", label = FALSE, repel = FALSE)
+dev.off()
+```
+
+```{r}
+# UMAP plot colored by CyTOF annotation - human
+
+file_path_umap <- file.path(output_dir, "human_UMAP_CyTOF_annotation.pdf")
+pdf(file_path_umap, width = 14, height = 8)
+DimPlot(human_seurat, reduction = "umap", group.by = "CyTOF_annotation", label = FALSE, repel = FALSE)
+dev.off()
+```
+
+```{r}
+# UMAP plot colored by QBC annotation - human
+
+file_path_umap <- file.path(output_dir, "human_UMAP_QBC_annotation.pdf")
+pdf(file_path_umap, width = 14, height = 8)
+DimPlot(human_seurat, reduction = "umap", group.by = "QBC_annotation", label = FALSE, repel = FALSE)
+dev.off()
+```
+
+
+```{r}
+# UMAP plot colored by stimulation - human
+
+file_path_umap <- file.path(output_dir, "human_UMAP_stimulation.pdf")
+pdf(file_path_umap, width = 10, height = 8)
+DimPlot(human_seurat, reduction = "umap", group.by = "stimulation", label = FALSE, repel = FALSE)
+dev.off()
+```
+
+
+
+#Visualize the Clusters on UMAP - Rhesus
+```{r}
+# UMAP plot colored by seurat clusters - rhesus
+
+file_path_umap <- file.path(output_dir, "rhesus_UMAP_seurat_clusters.pdf")
+pdf(file_path_umap, width = 10, height = 8)
+DimPlot(rhesus_seurat, reduction = "umap", group.by = "seurat_clusters", label = FALSE, repel = FALSE)
+dev.off()
+```
+
+```{r}
+# UMAP plot colored by QBC Donor - rhesus
+
+file_path_umap <- file.path(output_dir, "rhesus_UMAP_QBC_donor.pdf")
+pdf(file_path_umap, width = 10, height = 8)
+DimPlot(rhesus_seurat, reduction = "umap", group.by = "QBC_donor", label = FALSE, repel = FALSE)
+dev.off()
+```
+
+```{r}
+# UMAP plot colored by CyTOF Donor - rhesus
+
+file_path_umap <- file.path(output_dir, "rhesus_UMAP_CyTOF_donor.pdf")
+pdf(file_path_umap, width = 16, height = 8)
+DimPlot(rhesus_seurat, reduction = "umap", group.by = "CyTOF_donor", label = FALSE, repel = FALSE)
+dev.off()
+```
+
+```{r}
+# UMAP plot colored by CyTOF annotation - rhesus
+
+file_path_umap <- file.path(output_dir, "rhesus_UMAP_CyTOF_annotation.pdf")
+pdf(file_path_umap, width = 14, height = 8)
+DimPlot(rhesus_seurat, reduction = "umap", group.by = "CyTOF_annotation", label = FALSE, repel = FALSE)
+dev.off()
+```
+
+
+```{r}
+# UMAP plot colored by QBC annotation - rhesus
+
+file_path_umap <- file.path(output_dir, "rhesus_UMAP_QBC_annotation.pdf")
+pdf(file_path_umap, width = 14, height = 8)
+DimPlot(rhesus_seurat, reduction = "umap", group.by = "QBC_annotation", label = FALSE, repel = FALSE)
+dev.off()
+```
+
+```{r}
+# UMAP plot colored by stimulation - rhesus
+
+file_path_umap <- file.path(output_dir, "rhesus_UMAP_stimulation.pdf")
+pdf(file_path_umap, width = 10, height = 8)
+DimPlot(rhesus_seurat, reduction = "umap", group.by = "stimulation", label = FALSE, repel = FALSE)
+dev.off()
+```
+
+
+
+
+#Analyze Cluster Markers for Cluster Annotation
+```{r}
+human_seurat.markers <- FindAllMarkers(human_seurat, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+
+top20_human_markers <- human_seurat.markers %>%
+  group_by(cluster) %>%
+  slice_max(n = 20, order_by = avg_log2FC)
+
+file_path_csv <- file.path(output_dir, "human_seurat_top_20_markers_for_every_cluster.csv")
+
+write.csv(top20_human_markers, file = file_path_csv, row.names = FALSE)
+```
+
+```{r}
+rhesus_seurat.markers <- FindAllMarkers(rhesus_seurat, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+
+top20_rhesus_markers <- rhesus_seurat.markers %>%
+  group_by(cluster) %>%
+  slice_max(n = 20, order_by = avg_log2FC)
+
+file_path_csv <- file.path(output_dir, "rhesus_seurat_top_20_markers_for_every_cluster.csv")
+
+write.csv(top20_rhesus_markers, file = file_path_csv, row.names = FALSE)
+```
+
+```{r}
+# Plot all the features for every cluster in a heatmap - human
+
+# Create the full file path for the PDF
+file_path_heatmap_human <- file.path(output_dir, "human_heatmap_for_every_cluster.pdf")
+
+# Open the PDF device (note: 'res' and 'units' are not used for pdf)
+pdf(file_path_heatmap_human, width = 20, height = 16)
+
+# Generate the heatmap
+DoHeatmap(human_seurat, draw.lines = TRUE)
+
+# Close the device to save the file
+dev.off()
+```
+
+```{r}
+# Plot all the features for every cluster in a heatmap - rhesus
+
+# Create the full file path for the PDF
+file_path_heatmap_rhesus <- file.path(output_dir, "rhesus_heatmap_for_every_cluster.pdf")
+
+# Open the PDF device
+pdf(file_path_heatmap_rhesus, width = 20, height = 16)
+
+# Generate the heatmap
+DoHeatmap(rhesus_seurat, draw.lines = TRUE)
+
+# Close the device to save the file
+dev.off()
+```
+
+
+#Annotate clusters
+```{r}
+# Apply annotations and create fused_annotation column - human
+# Create the new annotated object
+human_seurat_annotated <- human_seurat
+
+# Create the new annotation column directly based on marker gene analysis
+human_seurat_annotated$fused_annotation <- factor(
+  as.character(Idents(human_seurat)),
+  levels = c("0", "1", "2", "3", "4", "5", "6", "7", "8"),
+  labels = c("Naive_CD4_T_cells",           # Cluster 0: CD27+, CD62L+, CD4+, CD3+
+             "Effector_CD8_T_cells",        # Cluster 1: CD8+, KLRG1+, TCR.Vd2+
+             "B_cells",                     # Cluster 2: CD19+, CD20+, CD22+, IgD+
+             "NK_cells",                    # Cluster 3: CD16+, CD94+, CD335+, CD158+
+             "Memory_CD4_T_cells",          # Cluster 4: CD4+, CD95+, CD28+
+             "Classical_Monocytes",         # Cluster 5: CD33+, CD11c+, CD64+, HLA-DR+
+             "Platelets",                   # Cluster 6: CD41+, CD42b+, CD62P+
+             "Non_classical_Monocytes",     # Cluster 7: CD57+, CD195+, CD86+
+             "Dendritic_cells")             # Cluster 8: CD123+, CD11c+, HLA-DR+
+)
+
+# Set the identities to the new annotations
+Idents(human_seurat_annotated) <- human_seurat_annotated$fused_annotation
+
+# Verify the annotations
+print("Human Seurat Annotations:")
+print(head(human_seurat_annotated$fused_annotation))
+print(table(human_seurat_annotated$fused_annotation))
+```
+
+```{r}
+# Apply annotations and create fused_annotation column - rhesus
+# Create the new annotated object
+rhesus_seurat_annotated <- rhesus_seurat
+
+# Create the new annotation column directly based on marker gene analysis
+rhesus_seurat_annotated$fused_annotation <- factor(
+  as.character(Idents(rhesus_seurat)),
+  levels = c("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"),
+  labels = c("Platelets",                   # Cluster 0: CD41+ (dominant marker)
+             "NK_cells",                    # Cluster 1: CD94+, CD45RA+
+             "CD8_T_cells",                 # Cluster 2: CD8+, CD2+, CD11a+
+             "Mixed_Lymphoid",              # Cluster 3: Mixed T/B markers
+             "Classical_Monocytes",         # Cluster 4: CD11b+, CD64+, HLA-DR+
+             "Memory_CD8_T_cells",          # Cluster 5: CD8+, CD28+, CD127+
+             "Platelets_activated",         # Cluster 6: CD41+, CD9+, CD31+
+             "Activated_Lymphoid",          # Cluster 7: Mixed activated T/B cells
+             "Dendritic_cells",             # Cluster 8: CD11c+, HLA-DR+, CD86+
+             "B_cells",                     # Cluster 9: CD22+, CD20+, CD268+
+             "Activated_B_cells")           # Cluster 10: CD72+, IgD+, CD268+
+)
+
+# Set the identities to the new annotations
+Idents(rhesus_seurat_annotated) <- rhesus_seurat_annotated$fused_annotation
+
+# Verify the annotations
+print("Rhesus Seurat Annotations:")
+print(head(rhesus_seurat_annotated$fused_annotation))
+print(table(rhesus_seurat_annotated$fused_annotation))
+```
+
+
+#Save clustered and annotated human seurat object
+```{r}
+saveRDS(human_seurat_annotated, file.path(output_dir, "human_seurat_annotated.rds"))
+```
+
+#Load back clustered and annotated human seurat object
+```{r}
+human_seurat_annotated <- readRDS(file.path(output_dir, "human_seurat_annotated.rds"))
+```
+
+#Save clustered and annotated rhesus seurat object
+```{r}
+saveRDS(rhesus_seurat_annotated, file.path(output_dir, "rhesus_seurat_annotated.rds"))
+```
+
+#Load back clustered and annotated rhesus seurat object
+```{r}
+rhesus_seurat_annotated <- readRDS(file.path(output_dir, "rhesus_seurat_annotated.rds"))
+```
+
+#"QBC_annotation" = the original annotations using all QBC features for clustering carried over
+#"CyTOF_annotation" = the original annotations using all CyTOF features for clustering carried over
+#"fused_annotation" = the annotations of clusters using 60 QBC cross-species features
+
+##Explore dataset
+
+#UMAP of 60 QBC cross-species markers annotated clusters - human
+#fused_annotation = 60 QBC cross-species annotation
+```{r}
+# --- UMAP of annotated clusters - human ---
+
+file_path_umap_human_annotated <- file.path(output_dir, "human_UMAP_fused_annotation_clusters.pdf")
+
+pdf(file_path_umap_human_annotated, width = 10, height = 8)
+
+DimPlot(human_seurat_annotated, reduction = "umap", group.by = "fused_annotation",
+        label = TRUE, label.size = 3, repel = TRUE)
+
+dev.off()
+```
+
+
+#UMAP of QBC cross-species markers annotated clusters - rhesus
+#fused_annotation = 60 QBC cross-species annotation
+```{r}
+# --- UMAP of annotated clusters - rhesus ---
+
+file_path_umap_rhesus_annotated <- file.path(output_dir, "rhesus_UMAP_fused_annotation_clusters.pdf")
+
+pdf(file_path_umap_rhesus_annotated, width = 10, height = 8)
+
+DimPlot(rhesus_seurat_annotated, reduction = "umap", group.by = "fused_annotation",
+        label = TRUE, label.size = 3, repel = TRUE)
+
+dev.off()
+```
+
+#Extract Cluster Composition Data
+
+#Using "CyTOF_annotation"
+#Human Data
+```{r}
+# Human data cluster counts based on CyTOF_annotation
+human_cytof_counts <- table(human_seurat_annotated$CyTOF_annotation)
+
+# Convert to data frame
+human_cytof_counts_df <- as.data.frame(human_cytof_counts)
+colnames(human_cytof_counts_df) <- c("Cluster", "Cell_Count")
+
+# Calculate proportions
+total_cells_human <- ncol(human_seurat_annotated)
+human_cytof_counts_df$Proportion <- human_cytof_counts_df$Cell_Count / total_cells_human * 100
+
+# Add species label
+human_cytof_counts_df$Species <- "Human"
+```
+
+#Rhesus Data
+```{r}
+# Rhesus data cluster counts based on CyTOF_annotation
+rhesus_cytof_counts <- table(rhesus_seurat_annotated$CyTOF_annotation)
+
+# Convert to data frame
+rhesus_cytof_counts_df <- as.data.frame(rhesus_cytof_counts)
+colnames(rhesus_cytof_counts_df) <- c("Cluster", "Cell_Count")
+
+# Calculate proportions
+total_cells_rhesus <- ncol(rhesus_seurat_annotated)
+rhesus_cytof_counts_df$Proportion <- rhesus_cytof_counts_df$Cell_Count / total_cells_rhesus * 100
+
+# Add species label
+rhesus_cytof_counts_df$Species <- "Rhesus"
+```
+
+#Combine CyTOF Dataframe
+```{r}
+# Combine the data frames
+combined_cytof_counts_df <- rbind(human_cytof_counts_df, rhesus_cytof_counts_df)
+```
+
+
+#Using "Fused_annotation"
+#Human Data
+```{r}
+# Human data cluster counts based on fusedannotation
+human_qbc_counts <- table(human_seurat_annotated$fused_annotation)
+
+# Convert to data frame
+human_qbc_counts_df <- as.data.frame(human_qbc_counts)
+colnames(human_qbc_counts_df) <- c("Cluster", "Cell_Count")
+
+# Calculate proportions
+human_qbc_counts_df$Proportion <- human_qbc_counts_df$Cell_Count / total_cells_human * 100
+
+# Add species label
+human_qbc_counts_df$Species <- "Human"
+```
+
+#Rhesus Data
+```{r}
+# Rhesus data cluster counts based on QBC_annotation_cross_species
+rhesus_qbc_counts <- table(rhesus_seurat_annotated$fused_annotation)
+
+# Convert to data frame
+rhesus_qbc_counts_df <- as.data.frame(rhesus_qbc_counts)
+colnames(rhesus_qbc_counts_df) <- c("Cluster", "Cell_Count")
+
+# Calculate proportions
+rhesus_qbc_counts_df$Proportion <- rhesus_qbc_counts_df$Cell_Count / total_cells_rhesus * 100
+
+# Add species label
+rhesus_qbc_counts_df$Species <- "Rhesus"
+```
+
+#Combine QBC Dataframe
+```{r}
+# Combine the data frames
+combined_qbc_counts_df <- rbind(human_qbc_counts_df, rhesus_qbc_counts_df)
+```
+
+
+#Compare Cluster Compositions
+
+#Visualize Cluster Proportions
+
+#Using "CyTOF_annotation"
+```{r}
+file_path_cytof <- file.path(output_dir, "CyTOF_annotation_Cluster_Proportions_by_Species_Table.pdf")
+
+pdf(file_path_cytof, width = 18, height = 8)
+
+# Plot cluster proportions based on CyTOF_annotation
+ggplot(combined_cytof_counts_df, aes(x = Cluster, y = Proportion, fill = Species)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Cluster Proportions by Species (CyTOF_annotation)", y = "Proportion (%)", x = "Cluster") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+dev.off()
+```
+
+#Using "Fused_annotation"
+```{r}
+file_path_fused <- file.path(output_dir, "Fused_annotation_Cluster_Proportions_by_Species_Table.pdf")
+
+pdf(file_path_fused, width = 10, height = 8)
+
+# Plot cluster proportions based on Fused_annotations
+ggplot(combined_qbc_counts_df, aes(x = Cluster, y = Proportion, fill = Species)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Cluster Proportions by Species (Fused_annotation)", y = "Proportion (%)", x = "Cluster") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+dev.off()
+```
+
+
+#Align Clusters Between Species
+#If the cluster annotations are consistent across species (e.g., same cluster names in "CyTOF_annotation" or "Fused_annotation"), you can directly compare them. If not, you may need to map clusters to common cell types based on known markers.
+
+#Statistical Comparison
+#Prepare Data for Statistical Tests
+#Ensure that clusters are aligned or mapped to common cell types before performing statistical tests.
+
+#Using "CyTOF_annotation"
+```{r}
+# Step 1: Define the Cluster Mapping
+cluster_mapping <- data.frame(
+  Human_Cluster = c("NK_cells", "B_cells", "Naive_CD4_T_cells", "Memory_CD4_T_cells", "Treg_cells", "Cytotoxic_CD8_T_cells", "Naive_CD8_T_cells", "Effector_memory_CD8_T_cells", "Classical_monocytes", "Non-classical_monocytes", "Mucosal_Associated_Invariant_T_cells", "Dendritic_cells"),
+  Rhesus_Cluster = c("NK_cells", "B_cells", "CD4_T_cells", "CD4_T_cells", "CD4_T_cells", "CD8_T_cells", "Activated_CD8_T_cells", "CD8_T_cells", "Monocytes", "Non-classical_monocytes", "NKT_cells", "Plasmacytoid_DCs_cells"),
+  Common_Cell_Type = c("NK_cells", "B_cells", "CD4_T_cells", "CD4_T_cells", "CD4_T_cells", "CD8_T_cells", "CD8_T_cells", "CD8_T_cells", "Monocytes", "Non-classical_monocytes", "Innate-like_T_cells", "Dendritic_cells")
+)
+
+# --- Step 2: Align the Human and Rhesus Data ---
+# This requires the dplyr package.
+library(dplyr)
+
+# Map human clusters
+human_cytof_aligned <- combined_cytof_counts_df %>%
+  filter(Species == "Human") %>%
+  left_join(cluster_mapping, by = c("Cluster" = "Human_Cluster"))
+
+# Map rhesus clusters
+rhesus_cytof_aligned <- combined_cytof_counts_df %>%
+  filter(Species == "Rhesus") %>%
+  left_join(cluster_mapping, by = c("Cluster" = "Rhesus_Cluster"))
+
+# Combine and aggregate counts by the new Common_Cell_Type
+aligned_cytof_counts <- bind_rows(human_cytof_aligned, rhesus_cytof_aligned) %>%
+  group_by(Species, Common_Cell_Type) %>%
+  summarise(Cell_Count = sum(Cell_Count), .groups = 'drop') %>%
+  na.omit() # Remove any clusters that didn't have a mapping
+
+# --- Step 3: Perform Chi-squared Test on Aligned Data ---
+# Create a contingency table from the ALIGNED data
+cytof_table_aligned <- xtabs(Cell_Count ~ Species + Common_Cell_Type, data = aligned_cytof_counts)
+
+# Perform the Chi-squared test
+chisq_test_cytof <- chisq.test(cytof_table_aligned)
+print("--- Chi-squared Test on Aligned CyTOF Annotations ---")
+print(cytof_table_aligned)
+print(chisq_test_cytof)
+```
+
+#Using "Fused_annotation"
+```{r}
+# --- Step 1: Define the Cluster Mapping for Fused Annotations ---
+# This mapping is now filled in based on the cluster lists you provided.
+# Please review and adjust this mapping as needed for your analysis.
+fused_cluster_mapping <- data.frame(
+  Cluster_Name = c(
+    # Human Annotations
+    "Naive_CD4_T_cells", "Memory_CD4_T_cells", "Effector_CD8_T_cells",
+    "B_cells", "NK_cells", "Classical_Monocytes", "Non_classical_Monocytes",
+    "Dendritic_cells", "Platelets",
+    # Rhesus Annotations
+    "CD8_T_cells", "Memory_CD8_T_cells", "B_cells", "Activated_B_cells",
+    "NK_cells", "Classical_Monocytes", "Dendritic_cells", "Platelets",
+    "Platelets_activated", "Mixed_Lymphoid", "Activated_Lymphoid"
+  ),
+  Common_Cell_Type = c(
+    # Common Names for Human
+    "CD4 T Cells", "CD4 T Cells", "CD8 T Cells", "B Cells", "NK Cells",
+    "Monocytes", "Monocytes", "Dendritic Cells", "Platelets",
+    # Common Names for Rhesus
+    "CD8 T Cells", "CD8 T Cells", "B Cells", "B Cells", "NK Cells",
+    "Monocytes", "Dendritic Cells", "Platelets", "Platelets",
+    "Mixed/Activated Lymphoid", "Mixed/Activated Lymphoid"
+  )
+)
+
+# --- Step 2: Align the Fused Annotation Data ---
+# This requires the dplyr package
+library(dplyr)
+
+# Use the mapping to align all clusters and then aggregate the counts
+aligned_qbc_counts <- combined_qbc_counts_df %>%
+  left_join(fused_cluster_mapping, by = c("Cluster" = "Cluster_Name")) %>%
+  na.omit() %>% # Removes any clusters not in the mapping
+  group_by(Species, Common_Cell_Type) %>%
+  summarise(Cell_Count = sum(Cell_Count), .groups = 'drop')
+
+# --- Step 3: Perform Chi-squared Test on Aligned Fused Data ---
+# Create a contingency table from the ALIGNED data
+qbc_table_aligned <- xtabs(Cell_Count ~ Species + Common_Cell_Type, data = aligned_qbc_counts)
+
+# Perform the Chi-squared test
+# A warning about the approximation may appear if some cell counts are low.
+chisq_test_qbc <- chisq.test(qbc_table_aligned)
+
+# Print the results
+print("--- Chi-squared Test on Aligned Fused Annotations ---")
+print("Contingency Table of Common Cell Types:")
+print(qbc_table_aligned)
+print(chisq_test_qbc)
+```
+#The significant p-value confirms that there is a major difference in the immune cell composition between the human and rhesus samples based on your annotations.
+#You can see why the test is so significant by looking directly at your contingency table:
+#CD4 T Cells: This entire population (5,165 cells) exists in your human data but is completely absent in the rhesus data.
+#Mixed/Activated Lymphoid: This population (2,125 cells) is unique to the rhesus data.
+#Drastic Proportional Differences: There are far more Platelets and NK Cells in the rhesus samples compared to the human samples.
+#These clear, large-scale differences are what drive the Chi-squared statistic (X-squared = 13518) to be so high and the p-value to be so low.
+
+
+
+#Heatmaps of Cluster Proportions
+#Create heatmaps to visualize cluster proportions
+
+#Using "CyTOF_annotation"
+```{r}
+file_path_heatmap_cytof <- file.path(output_dir, "CyTOF_annotation_Cluster_Proportions_by_Species_Heatmap.pdf")
+
+pdf(file_path_heatmap_cytof, width = 10, height = 8)
+
+# Prepare data matrix
+cytof_prop_matrix <- xtabs(Proportion ~ Cluster + Species, data = combined_cytof_counts_df)
+
+pheatmap(cytof_prop_matrix,
+         display_numbers = TRUE,
+         number_format = "%.2f",
+         cluster_rows = FALSE,
+         cluster_cols = FALSE,
+         main = "Cluster Proportions Heatmap (CyTOF_annotation)")
+
+dev.off()
+```
+
+#Using "Fused_annotation"
+```{r}
+file_path_heatmap_fused <- file.path(output_dir, "Fused_annotation_Cluster_Proportions_by_Species_Heatmap.pdf")
+
+pdf(file_path_heatmap_fused, width = 10, height = 8)
+
+qbc_prop_matrix <- xtabs(Proportion ~ Cluster + Species, data = combined_qbc_counts_df)
+
+pheatmap(qbc_prop_matrix,
+         display_numbers = TRUE,
+         number_format = "%.2f",
+         cluster_rows = FALSE,
+         cluster_cols = FALSE,
+         main = "Cluster Proportions Heatmap (Fused_annotation_cross_species)")
+
+dev.off()
+```
+
+
+```{r}
+# Donor IDs are stored in "QBC_donor" column - Human
+human_QBC_donors <- unique(human_seurat_annotated$QBC_donor)
+
+# Create an empty list to store data frames per donor
+human_cluster_counts_list <- list()
+
+# For each donor, compute cluster counts and proportions
+for (donor in human_QBC_donors) {
+  # Subset data for the donor - using QBC_donor instead of sample
+  donor_cells <- subset(human_seurat_annotated, subset = QBC_donor == donor)
+  
+  # Get total cells for the donor
+  total_cells_donor <- ncol(donor_cells)
+  
+  # Compute cluster counts
+  donor_cluster_counts <- table(donor_cells$fused_annotation)
+  
+  # Convert to data frame
+  donor_cluster_counts_df <- as.data.frame(donor_cluster_counts)
+  colnames(donor_cluster_counts_df) <- c("Cluster", "Cell_Count")
+  
+  # Calculate proportions
+  donor_cluster_counts_df$Proportion <- donor_cluster_counts_df$Cell_Count / total_cells_donor * 100
+  
+  # Add donor and species information
+  donor_cluster_counts_df$Donor <- donor
+  donor_cluster_counts_df$Species <- "Human"
+  
+  # Add to list
+  human_cluster_counts_list[[donor]] <- donor_cluster_counts_df
+}
+
+# Combine data frames from all donors
+human_QBC_donors_cluster_counts_df <- bind_rows(human_cluster_counts_list)
+```
+
+
+```{r}
+# Donor IDs are stored in "CyTOF_donor" column - Human
+human_CyTOF_donors <- unique(human_seurat_annotated$CyTOF_donor)
+
+# Create an empty list to store data frames per donor
+human_cluster_counts_list <- list()
+
+# For each donor, compute cluster counts and proportions
+for (donor in human_CyTOF_donors) {
+  # Subset data for the donor - using QBC_donor instead of sample
+  donor_cells <- subset(human_seurat_annotated, subset = CyTOF_donor == donor)
+  
+  # Get total cells for the donor
+  total_cells_donor <- ncol(donor_cells)
+  
+  # Compute cluster counts
+  donor_cluster_counts <- table(donor_cells$fused_annotation)
+  
+  # Convert to data frame
+  donor_cluster_counts_df <- as.data.frame(donor_cluster_counts)
+  colnames(donor_cluster_counts_df) <- c("Cluster", "Cell_Count")
+  
+  # Calculate proportions
+  donor_cluster_counts_df$Proportion <- donor_cluster_counts_df$Cell_Count / total_cells_donor * 100
+  
+  # Add donor and species information
+  donor_cluster_counts_df$Donor <- donor
+  donor_cluster_counts_df$Species <- "Human"
+  
+  # Add to list
+  human_cluster_counts_list[[donor]] <- donor_cluster_counts_df
+}
+
+# Combine data frames from all donors
+human_CyTOF_donors_cluster_counts_df <- bind_rows(human_cluster_counts_list)
+```
+
+```{r}
+# Donor IDs are stored in "QBC_donor" column - Rhesus
+rhesus_QBC_donors <- unique(rhesus_seurat_annotated$QBC_donor)
+
+# Create an empty list to store data frames per donor
+rhesus_cluster_counts_list <- list()
+
+# For each donor, compute cluster counts and proportions
+for (donor in rhesus_QBC_donors) {
+  # Subset data for the donor - using QBC_donor instead of sample
+  donor_cells <- subset(rhesus_seurat_annotated, subset = QBC_donor == donor)
+  
+  # Get total cells for the donor
+  total_cells_donor <- ncol(donor_cells)
+  
+  # Compute cluster counts
+  donor_cluster_counts <- table(donor_cells$fused_annotation)
+  
+  # Convert to data frame
+  donor_cluster_counts_df <- as.data.frame(donor_cluster_counts)
+  colnames(donor_cluster_counts_df) <- c("Cluster", "Cell_Count")
+  
+  # Calculate proportions
+  donor_cluster_counts_df$Proportion <- donor_cluster_counts_df$Cell_Count / total_cells_donor * 100
+  
+  # Add donor and species information
+  donor_cluster_counts_df$Donor <- donor
+  donor_cluster_counts_df$Species <- "Rhesus"
+  
+  # Add to list
+  rhesus_cluster_counts_list[[donor]] <- donor_cluster_counts_df
+}
+
+# Combine data frames from all donors
+rhesus_QBC_donors_cluster_counts_df <- bind_rows(rhesus_cluster_counts_list)
+```
+
+
+```{r}
+# Donor IDs are stored in "CyTOF_donor" column - Rhesus
+rhesus_CyTOF_donors <- unique(rhesus_seurat_annotated$CyTOF_donor)
+
+# Create an empty list to store data frames per donor
+rhesus_cluster_counts_list <- list()
+
+# For each donor, compute cluster counts and proportions
+for (donor in rhesus_CyTOF_donors) {
+  # Subset data for the donor - using QBC_donor instead of sample
+  donor_cells <- subset(rhesus_seurat_annotated, subset = CyTOF_donor == donor)
+  
+  # Get total cells for the donor
+  total_cells_donor <- ncol(donor_cells)
+  
+  # Compute cluster counts
+  donor_cluster_counts <- table(donor_cells$fused_annotation)
+  
+  # Convert to data frame
+  donor_cluster_counts_df <- as.data.frame(donor_cluster_counts)
+  colnames(donor_cluster_counts_df) <- c("Cluster", "Cell_Count")
+  
+  # Calculate proportions
+  donor_cluster_counts_df$Proportion <- donor_cluster_counts_df$Cell_Count / total_cells_donor * 100
+  
+  # Add donor and species information
+  donor_cluster_counts_df$Donor <- donor
+  donor_cluster_counts_df$Species <- "Rhesus"
+  
+  # Add to list
+  rhesus_cluster_counts_list[[donor]] <- donor_cluster_counts_df
+}
+
+# Combine data frames from all donors
+rhesus_CyTOF_donors_cluster_counts_df <- bind_rows(rhesus_cluster_counts_list)
+```
+
+
+#Calculate Mean and Standard Deviation of Cluster Proportions
+
+#Human QBC Donors
+```{r}
+# Compute mean and standard deviation of proportions per cluster - QBC
+human_QBC_donors_cluster_stats <- human_QBC_donors_cluster_counts_df %>%
+  group_by(Cluster) %>%
+  summarise(
+    Mean_Proportion = mean(Proportion),
+    SD_Proportion = sd(Proportion)
+  ) %>%
+  mutate(Species = "Human")
+```
+
+#Human CyTOF Donors
+```{r}
+# Compute mean and standard deviation of proportions per cluster - CyTOF
+human_CyTOF_donors_cluster_stats <- human_CyTOF_donors_cluster_counts_df %>%
+  group_by(Cluster) %>%
+  summarise(
+    Mean_Proportion = mean(Proportion),
+    SD_Proportion = sd(Proportion)
+  ) %>%
+  mutate(Species = "Human")
+```
+
+#Rhesus QBC Donors
+```{r}
+# Compute mean and standard deviation of proportions per cluster - QBC
+rhesus_QBC_donors_cluster_stats <- rhesus_QBC_donors_cluster_counts_df %>%
+  group_by(Cluster) %>%
+  summarise(
+    Mean_Proportion = mean(Proportion),
+    SD_Proportion = sd(Proportion)
+  ) %>%
+  mutate(Species = "Rhesus")
+```
+
+#Rhesus CyTOF Donors
+```{r}
+# Compute mean and standard deviation of proportions per cluster - CyTOF
+rhesus_CyTOF_donors_cluster_stats <- rhesus_CyTOF_donors_cluster_counts_df %>%
+  group_by(Cluster) %>%
+  summarise(
+    Mean_Proportion = mean(Proportion),
+    SD_Proportion = sd(Proportion)
+  ) %>%
+  mutate(Species = "Rhesus")
+```
+
+#Plot Bar Plots with Standard Deviation
+
+#Human QBC Donors
+```{r}
+# Create the full file path for the PDF
+file_path_human_qbc <- file.path(output_dir, "Cluster Proportions in Human QBC Donors.pdf")
+pdf(file_path_human_qbc, width = 10, height = 6)
+
+# Plot bar plot with corrected error bars
+ggplot(human_QBC_donors_cluster_stats, aes(x = Cluster, y = Mean_Proportion)) +
+  geom_bar(stat = "identity", fill = "forestgreen") +
+  geom_errorbar(aes(ymin = pmax(0, Mean_Proportion - SD_Proportion), ymax = Mean_Proportion + SD_Proportion), width = 0.2) +
+  labs(title = "Cluster Proportions in Human QBC Donors", y = "Proportion (%)", x = "Cluster") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+dev.off()
+```
+
+#Human CyTOF Donors
+```{r}
+# Create the full file path for the PDF
+file_path_human_cytof <- file.path(output_dir, "Cluster Proportions in Human CyTOF Donors.pdf")
+pdf(file_path_human_cytof, width = 10, height = 6)
+
+# Plot bar plot with corrected error bars
+ggplot(human_CyTOF_donors_cluster_stats, aes(x = Cluster, y = Mean_Proportion)) +
+  geom_bar(stat = "identity", fill = "salmon") +
+  geom_errorbar(aes(ymin = pmax(0, Mean_Proportion - SD_Proportion), ymax = Mean_Proportion + SD_Proportion), width = 0.2) +
+  labs(title = "Cluster Proportions in Human CyTOF Donors", y = "Proportion (%)", x = "Cluster") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+dev.off()
+```
+
+
+#Rhesus QBC Donors
+```{r}
+# Create the full file path for the PDF
+file_path_rhesus_qbc <- file.path(output_dir, "Cluster Proportions in Rhesus QBC Donors.pdf")
+pdf(file_path_rhesus_qbc, width = 10, height = 6)
+
+# Plot bar plot with corrected error bars
+ggplot(rhesus_QBC_donors_cluster_stats, aes(x = Cluster, y = Mean_Proportion)) +
+  geom_bar(stat = "identity", fill = "forestgreen") +
+  geom_errorbar(aes(ymin = pmax(0, Mean_Proportion - SD_Proportion), ymax = Mean_Proportion + SD_Proportion), width = 0.2) +
+  labs(title = "Cluster Proportions in Rhesus QBC Donors", y = "Proportion (%)", x = "Cluster") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+dev.off()
+```
+
+#Rhesus CyTOF Donors
+```{r}
+# Create the full file path for the PDF
+file_path_rhesus_cytof <- file.path(output_dir, "Cluster Proportions in Rhesus CyTOF Donors.pdf")
+pdf(file_path_rhesus_cytof, width = 10, height = 6)
+
+# Plot bar plot with corrected error bars
+ggplot(rhesus_CyTOF_donors_cluster_stats, aes(x = Cluster, y = Mean_Proportion)) +
+  geom_bar(stat = "identity", fill = "salmon") +
+  geom_errorbar(aes(ymin = pmax(0, Mean_Proportion - SD_Proportion), ymax = Mean_Proportion + SD_Proportion), width = 0.2) +
+  labs(title = "Cluster Proportions in Rhesus CyTOF Donors", y = "Proportion (%)", x = "Cluster") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+dev.off()
+```
+
+
+
+#Combined Plot for Both Species - Fused Annotation
+```{r}
+# Combine human and rhesus cluster stats - Fused Annotation
+qbc_combined_cluster_stats <- bind_rows(human_QBC_donors_cluster_stats, rhesus_QBC_donors_cluster_stats)
+
+# Create the full file path for the PDF
+file_path_qbc_combined <- file.path(output_dir, "QBC Combined Cluster Proportions in Human and Rhesus Donors with SD Mapped.pdf")
+pdf(file_path_qbc_combined, width = 10, height = 6)
+
+# Plot combined bar plot with corrected error bars
+ggplot(qbc_combined_cluster_stats, aes(x = Cluster, y = Mean_Proportion, fill = Species)) +
+  geom_bar(stat = "identity", position = position_dodge(), width = 0.7) +
+  geom_errorbar(aes(ymin = pmax(0, Mean_Proportion - SD_Proportion), ymax = Mean_Proportion + SD_Proportion),
+                position = position_dodge(0.7), width = 0.2) +
+  labs(title = "QBC Cluster Proportions in Human and Rhesus Donors", y = "Proportion (%)", x = "Cluster") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+dev.off()
+```
+
+#Combined Plot for Both Species - CyTOF
+```{r}
+# Combine human and rhesus cluster stats - CyTOF
+cytof_combined_cluster_stats <- bind_rows(human_CyTOF_donors_cluster_stats, rhesus_CyTOF_donors_cluster_stats)
+
+# Create the full file path for the PDF
+file_path_cytof_combined <- file.path(output_dir, "CyTOF Combined Cluster Proportions in Human and Rhesus Donors with SD Mapped.pdf")
+pdf(file_path_cytof_combined, width = 10, height = 6)
+
+# Plot combined bar plot with corrected error bars
+ggplot(cytof_combined_cluster_stats, aes(x = Cluster, y = Mean_Proportion, fill = Species)) +
+  geom_bar(stat = "identity", position = position_dodge(), width = 0.7) +
+  geom_errorbar(aes(ymin = pmax(0, Mean_Proportion - SD_Proportion), ymax = Mean_Proportion + SD_Proportion),
+                position = position_dodge(0.7), width = 0.2) +
+  labs(title = "CyTOF Cluster Proportions in Human and Rhesus Donors", y = "Proportion (%)", x = "Cluster") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+dev.off()
+```
+
+
+#(Skip)
+#Statistical Comparison Between Species for Each Cluster - QBC
+```{r}
+# --- Statistical Comparison Between Species for Each Cluster - QBC ---
+
+# THE FIX: Ensure the 'Donor' column in both data frames is the same type (character)
+rhesus_QBC_donors_cluster_counts_df$Donor <- as.character(rhesus_QBC_donors_cluster_counts_df$Donor)
+
+# Now, merge the donor-level data from both species
+qbc_combined_cluster_counts_df <- bind_rows(human_QBC_donors_cluster_counts_df, rhesus_QBC_donors_cluster_counts_df)
+
+# Find common clusters
+qbc_common_clusters <- intersect(human_QBC_donors_cluster_stats$Cluster, rhesus_QBC_donors_cluster_stats$Cluster)
+
+# Initialize data frame to store test results
+qbc_stat_test_results <- data.frame(
+  Cluster = character(),
+  p_value = numeric(),
+  adj_p_value = numeric(),
+  test = character(),
+  stringsAsFactors = FALSE
+)
+
+# Perform statistical test for each common cluster
+for (cluster in qbc_common_clusters) {
+  # Subset data for the cluster
+  cluster_data <- qbc_combined_cluster_counts_df %>% filter(Cluster == cluster)
+  
+  # Get proportions for each species
+  human_props <- cluster_data %>% filter(Species == "Human") %>% pull(Proportion)
+  rhesus_props <- cluster_data %>% filter(Species == "Rhesus") %>% pull(Proportion)
+  
+  # Perform Wilcoxon rank-sum test
+  test_result <- wilcox.test(human_props, rhesus_props)
+  
+  # Store the result
+  qbc_stat_test_results <- rbind(qbc_stat_test_results, data.frame(
+    Cluster = cluster,
+    p_value = test_result$p.value,
+    test = "Wilcoxon rank-sum",
+    stringsAsFactors = FALSE
+  ))
+}
+
+# Adjust p-values for multiple testing
+qbc_stat_test_results$adj_p_value <- p.adjust(qbc_stat_test_results$p_value, method = "fdr")
+
+# View the results and save to CSV
+print("--- QBC Statistical Test Results ---")
+print(qbc_stat_test_results)
+file_path_qbc_stats <- file.path(output_dir, "QBC_Cluster_Proportions_Statistical_Tests.csv")
+write.csv(qbc_stat_test_results, file_path_qbc_stats, row.names = FALSE)
+```
+
+```{r}
+# --- Statistical Comparison Between Species for Each Cluster - CyTOF ---
+
+# THE FIX: Ensure the 'Donor' column in both data frames is the same type (character)
+rhesus_CyTOF_donors_cluster_counts_df$Donor <- as.character(rhesus_CyTOF_donors_cluster_counts_df$Donor)
+
+# Now, merge the donor-level data from both species
+cytof_combined_cluster_counts_df <- bind_rows(human_CyTOF_donors_cluster_counts_df, rhesus_CyTOF_donors_cluster_counts_df)
+
+# Find common clusters
+cytof_common_clusters <- intersect(human_CyTOF_donors_cluster_stats$Cluster, rhesus_CyTOF_donors_cluster_stats$Cluster)
+
+# Initialize data frame to store test results
+cytof_stat_test_results <- data.frame(
+  Cluster = character(),
+  p_value = numeric(),
+  adj_p_value = numeric(),
+  test = character(),
+  stringsAsFactors = FALSE
+)
+
+# Perform statistical test for each common cluster
+for (cluster in cytof_common_clusters) {
+  # Subset data for the cluster
+  cluster_data <- cytof_combined_cluster_counts_df %>% filter(Cluster == cluster)
+  
+  # Get proportions for each species
+  human_props <- cluster_data %>% filter(Species == "Human") %>% pull(Proportion)
+  rhesus_props <- cluster_data %>% filter(Species == "Rhesus") %>% pull(Proportion)
+  
+  # Perform Wilcoxon rank-sum test
+  test_result <- wilcox.test(human_props, rhesus_props)
+  
+  # Store the result
+  cytof_stat_test_results <- rbind(cytof_stat_test_results, data.frame(
+    Cluster = cluster,
+    p_value = test_result$p.value,
+    test = "Wilcoxon rank-sum",
+    stringsAsFactors = FALSE
+  ))
+}
+
+# Adjust p-values for multiple testing
+cytof_stat_test_results$adj_p_value <- p.adjust(cytof_stat_test_results$p_value, method = "fdr")
+
+# View the results and save to CSV
+print("--- CyTOF Statistical Test Results ---")
+print(cytof_stat_test_results)
+file_path_cytof_stats <- file.path(output_dir, "CyTOF_Cluster_Proportions_Statistical_Tests.csv")
+write.csv(cytof_stat_test_results, file_path_cytof_stats, row.names = FALSE)
+```
+
+#	p_value: The raw p-value from the Wilcoxon rank-sum test.
+# adj_p_value: The p-value adjusted for multiple testing using the false discovery rate (FDR) method.
+# A significant adj_p_value (< 0.05) indicates a statistically significant difference in cluster proportions between human and rhesus donors for that cluster.
+
+
+#(Skip)
+#Statistical Comparison Between Clusters of Interest Within a Species
+```{r}
+# Define clusters of interest
+cluster1 <- "Cluster1_Name"  # Replace with actual cluster name
+cluster2 <- "Cluster2_Name"  # Replace with actual cluster name
+
+# Subset data for the two clusters
+cluster1_data <- human_cluster_counts_df %>% filter(Cluster == cluster1)
+cluster2_data <- human_cluster_counts_df %>% filter(Cluster == cluster2)
+
+# Ensure that donors match
+cluster1_data <- cluster1_data %>% arrange(Donor)
+cluster2_data <- cluster2_data %>% arrange(Donor)
+
+# Check that donors are the same
+if (!all(cluster1_data$Donor == cluster2_data$Donor)) {
+  stop("Donor IDs do not match between clusters")
+}
+
+# Perform paired Wilcoxon signed-rank test
+test_result <- wilcox.test(cluster1_data$Proportion, cluster2_data$Proportion, paired = TRUE)
+
+# Output test result
+print(test_result)
+```
+
+#	Paired Test: Since the proportions are from the same donors, we use a paired test.
+# Wilcoxon Signed-Rank Test: Non-parametric test used when data may not be normally distributed.
+
+# Repeat the same process for rhesus data if desired.
+
+
+#Assuming you want to compare “Naive_CD4_T_cells” and “Memory_CD4_T_cells” within human donors
+```{r}
+# Define clusters of interest
+cluster1 <- "Naive_CD4_T_cells"
+cluster2 <- "Memory_CD4_T_cells"
+
+# Subset data for the two clusters
+cluster1_data <- human_cluster_counts_df %>% filter(Cluster == cluster1)
+cluster2_data <- human_cluster_counts_df %>% filter(Cluster == cluster2)
+
+# Ensure that donors match
+cluster1_data <- cluster1_data %>% arrange(Donor)
+cluster2_data <- cluster2_data %>% arrange(Donor)
+
+# Perform paired Wilcoxon signed-rank test
+test_result <- wilcox.test(cluster1_data$Proportion, cluster2_data$Proportion, paired = TRUE)
+
+# Output test result
+print(test_result)
+```
+
+
+#Compare Marker Levels - T cell Markers
+
+```{r}
+# Define the markers
+T_cells_markers <- c("CD3-QBC", "CD3-CyTOF", "CD4-QBC", "CD4-CyTOF", "CD8-QBC", "CD8-CyTOF")
+
+# Create the full file path for the PDF
+file_path_human_tcell <- file.path(output_dir, "UMAP_human_T_cells_markers.pdf")
+
+# Open the PDF device
+pdf(file_path_human_tcell, width = 10, height = 8)
+
+# Human data feature plots
+FeaturePlot(human_seurat_annotated, features = T_cells_markers, keep.scale = "all", max.cutoff = 0.5)
+
+# Close the device to save the file
+dev.off()
+```
+
+```{r}
+# Create the full file path for the PDF
+file_path_rhesus_tcell <- file.path(output_dir, "UMAP_rhesus_T_cells_markers.pdf")
+
+# Open the PDF device
+pdf(file_path_rhesus_tcell, width = 10, height = 8)
+
+# Rhesus data feature plots
+FeaturePlot(rhesus_seurat_annotated, features = T_cells_markers, keep.scale = "all", max.cutoff = 0.5)
+
+# Close the device to save the file
+dev.off()
+```
+
+
+#Compare Marker Levels - Ki67
+
+```{r}
+# Create the full file path for the PDF
+file_path_human_ki67 <- file.path(output_dir, "UMAP_human_Ki67.pdf")
+
+# Open the PDF device
+pdf(file_path_human_ki67, width = 10, height = 8)
+
+# Human data feature plots
+FeaturePlot(human_seurat_annotated, features = "Ki67-CyTOF", keep.scale = "all", max.cutoff = 0.5)
+
+# Close the device to save the file
+dev.off()
+```
+
+```{r}
+# Create the full file path for the PDF
+file_path_rhesus_ki67 <- file.path(output_dir, "UMAP_rhesus_Ki67.pdf")
+
+# Open the PDF device
+pdf(file_path_rhesus_ki67, width = 10, height = 8)
+
+# Rhesus data feature plots
+FeaturePlot(rhesus_seurat_annotated, features = "Ki67-CyTOF", keep.scale = "all", max.cutoff = 0.5)
+
+# Close the device to save the file
+dev.off()
+```
+
+
+
+#Human and Rhesus Phospho Features on UMAP
+```{r}
+# --- UMAP Feature Plots of Phospho Markers ---
+
+# Define the markers (this is unchanged)
+phospho_markers <- c("pSTAT1.Y701.-CyTOF", "pSTAT3.Y705.-CyTOF", "IkBa.amino.terminal-CyTOF", 
+                     "p4EBP1.T37.T46.-CyTOF", "pZAP70.Syk.Y319.Y352.-CyTOF", "pS6.S235.S236.-CyTOF", 
+                     "pCREB.S133.-CyTOF", "pSTAT4.Y693.-CyTOF", "pSTAT5.Y694.-CyTOF", 
+                     "pTBK1.NAK.S172.-CyTOF", "pSTAT6.Y691.-CyTOF", "pPLCg2.Y579.-CyTOF", 
+                     "pERK1.2.T202.Y204.-CyTOF", "pP38.MAPK.T180.Y182.-CyTOF", "pMAPKAPK2.T334.-CyTOF")
+
+# --- Human Feature Plot ---
+file_path_human_phospho <- file.path(output_dir, "UMAP_human_phospho_markers.pdf")
+pdf(file_path_human_phospho, width = 20, height = 16)
+FeaturePlot(human_seurat_annotated, features = phospho_markers, keep.scale = "all", max.cutoff = 0.5)
+dev.off()
+
+# --- Rhesus Feature Plot ---
+file_path_rhesus_phospho <- file.path(output_dir, "UMAP_rhesus_phospho_markers.pdf")
+pdf(file_path_rhesus_phospho, width = 20, height = 16)
+FeaturePlot(rhesus_seurat_annotated, features = phospho_markers, keep.scale = "all", max.cutoff = 0.5)
+dev.off()
+```
+
+```{r}
+# --- Function 1: General Violin Plots by Cluster ---
+plot_vln_by_cluster <- function(seurat_obj, markers, group_by_col, species_name, save_dir) {
+  # Create the directory if it doesn't exist
+  if (!dir.exists(save_dir)) {
+    dir.create(save_dir, recursive = TRUE)
+  }
+  
+  for (marker in markers) {
+    p <- VlnPlot(seurat_obj, features = marker, group.by = group_by_col, pt.size = 0) +
+      ggtitle(paste(species_name, "-", marker)) +
+      ylab("Expression Level") +
+      xlab("Cluster") +
+      coord_cartesian(ylim = c(0, 1.25)) +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+            plot.title = element_text(hjust = 0.5, size = 14))
+            
+    file_name <- paste0(species_name, "_", gsub("[^a-zA-Z0-9.-]", "_", marker), "_by_", group_by_col, ".pdf")
+    ggsave(filename = file.path(save_dir, file_name), plot = p, width = 12, height = 8)
+  }
+}
+
+# --- Function 2: Violin Plots Split by Stimulation ---
+plot_vln_by_cluster_split <- function(seurat_obj, markers, group_by_col, species_name, save_dir) {
+  # Create the directory if it doesn't exist
+  if (!dir.exists(save_dir)) {
+    dir.create(save_dir, recursive = TRUE)
+  }
+  
+  for (marker in markers) {
+    p <- VlnPlot(seurat_obj, features = marker, group.by = group_by_col, split.by = "stimulation", pt.size = 0) +
+      ggtitle(paste(species_name, "-", marker, "by Stimulation")) +
+      ylab("Expression Level") +
+      xlab("Cluster") +
+      coord_cartesian(ylim = c(0, 1.25)) +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+            plot.title = element_text(hjust = 0.5, size = 14),
+            legend.position = "right")
+            
+    file_name <- paste0(species_name, "_", gsub("[^a-zA-Z0-9.-]", "_", marker), "_by_", group_by_col, "_split.pdf")
+    ggsave(filename = file.path(save_dir, file_name), plot = p, width = 15, height = 8)
+  }
+}
+```
+
+#"QBC_annotation" = the original annotations using all QBC features for clustering carried over
+#"CyTOF_annotation" = the original annotations using all CyTOF features for clustering carried over
+#"fused_annotation" = the annotations of clusters using 60 QBC cross-species features
+```{r}
+# --- Generate Violin Plots Split by Stimulation ---
+
+# --- Human Data ---
+
+# 1. Define save directories for the stimulation plots
+human_qbc_stim_dir <- file.path(output_dir, "human_qbc_annotation_clusters_stimulation_phospho")
+human_cytof_stim_dir <- file.path(output_dir, "human_cytof_annotation_clusters_stimulation_phospho")
+human_fused_stim_dir <- file.path(output_dir, "human_fused_annotated_clusters_stimulation_phospho")
+
+# The "fused_annotation" plot is now removed.
+
+# Plot 1: Human QBC Annotations split by stimulation
+plot_vln_by_cluster_split(
+  seurat_obj = human_seurat_annotated,
+  markers = phospho_markers,
+  group_by_col = "QBC_annotation",
+  species_name = "Human",
+  save_dir = human_qbc_stim_dir
+)
+
+# Plot 2: Human CyTOF Annotations split by stimulation
+plot_vln_by_cluster_split(
+  seurat_obj = human_seurat_annotated,
+  markers = phospho_markers,
+  group_by_col = "CyTOF_annotation", 
+  species_name = "Human",
+  save_dir = human_cytof_stim_dir
+)
+
+# Plot 3: Human Fused Annotations split by stimulation
+plot_vln_by_cluster_split(
+  seurat_obj = human_seurat_annotated,
+  markers = phospho_markers,
+  group_by_col = "fused_annotation",
+  species_name = "Human",
+  save_dir = human_fused_stim_dir
+)
+
+
+# --- Rhesus Data ---
+
+# 1. Define save directories for the stimulation plots
+rhesus_qbc_stim_dir <- file.path(output_dir, "rhesus_qbc_annotation_clusters_stimulation_phospho")
+rhesus_cytof_stim_dir <- file.path(output_dir, "rhesus_cytof_annotation_clusters_stimulation_phospho")
+rhesus_fused_stim_dir <- file.path(output_dir, "rhesus_fused_annotated_clusters_stimulation_phospho")
+
+# The "fused_annotation" plot is now removed.
+
+# Plot 4: Rhesus QBC Annotations split by stimulation
+plot_vln_by_cluster_split(
+  seurat_obj = rhesus_seurat_annotated,
+  markers = phospho_markers,
+  group_by_col = "QBC_annotation",
+  species_name = "Rhesus",
+  save_dir = rhesus_qbc_stim_dir
+)
+
+# Plot 5: Rhesus CyTOF Annotations split by stimulation
+plot_vln_by_cluster_split(
+  seurat_obj = rhesus_seurat_annotated,
+  markers = phospho_markers,
+  group_by_col = "CyTOF_annotation",
+  species_name = "Rhesus",
+  save_dir = rhesus_cytof_stim_dir
+)
+
+# Plot 6: Rhesus Fused Annotations split by stimulation
+plot_vln_by_cluster_split(
+  seurat_obj = rhesus_seurat_annotated,
+  markers = phospho_markers,
+  group_by_col = "fused_annotation",
+  species_name = "Rhesus",
+  save_dir = rhesus_fused_stim_dir
+)
+```
+
+
+##Trajectory Analysis using Monocle3
+# Differential Expression Along Trajectories: Monocle 3 provides tools suitable for protein data to identify proteins whose expression varies along the trajectory.
+# Complex Trajectories: If your data exhibit complex branching patterns, Monocle 3 may capture these more effectively.
+# Integration with Existing Annotations: Monocle 3 allows for easy integration of existing annotations (e.g., cell types, markers) into the trajectory analysis and visualization.
+```{r}
+# --- Master Function for Monocle3 Trajectory Analysis (Updated) ---
+
+run_monocle_trajectory <- function(seurat_obj, species_name, proliferation_sig, save_path, show_graph = TRUE) {
+  
+  message(paste("--- Starting Monocle3 analysis for", species_name, "---"))
+  
+  # ... (Steps 1-5 are the same as before) ...
+  # 1. Create Monocle cell_data_set (CDS) from Seurat object
+  message("Step 1: Converting Seurat object to Monocle CDS...")
+  expr_data <- GetAssayData(seurat_obj, slot = "data")
+  cell_metadata <- seurat_obj@meta.data
+  feature_metadata <- data.frame(gene_short_name = rownames(expr_data), row.names = rownames(expr_data))
+  
+  cds <- new_cell_data_set(
+    expression_data = expr_data,
+    cell_metadata = cell_metadata,
+    gene_metadata = feature_metadata
+  )
+  
+  # 2. Preprocess, reduce dimensions, and cluster
+  message("Step 2: Preprocessing and clustering cells...")
+  cds <- preprocess_cds(cds, num_dim = 50, norm_method = "none")
+  cds <- reduce_dimension(cds, reduction_method = "UMAP", preprocess_method = "PCA")
+  cds <- cluster_cells(cds, reduction_method = "UMAP")
+  
+  # 3. Learn the trajectory graph
+  message("Step 3: Learning trajectory graph...")
+  cds <- learn_graph(cds)
+  
+  # 4. Define root cells using the proliferation signature
+  message("Step 4: Identifying root cells based on proliferation signature...")
+  
+  available_markers <- names(proliferation_sig)[names(proliferation_sig) %in% rownames(expr_data)]
+  message(paste("Using the following", length(available_markers), "markers for proliferation score:", paste(available_markers, collapse=", ")))
+  
+  normalized_expr <- t(scale(t(expr_data[available_markers, ])))
+  proliferation_score <- colMeans(normalized_expr, na.rm = TRUE)
+  cds@colData$proliferation_score <- proliferation_score
+  
+  score_threshold <- quantile(proliferation_score, 0.95)
+  root_cells <- colnames(cds)[proliferation_score >= score_threshold]
+  message(paste("Identified", length(root_cells), "root cells."))
+  
+  # 5. Order cells in pseudotime
+  message("Step 5: Ordering cells along the trajectory...")
+  cds <- order_cells(cds, root_cells = root_cells)
+
+  # 6. Generate and save all plots as PDFs
+  message("Step 6: Generating and saving output plots...")
+  
+  # Plot 1: Trajectory colored by Cell Type ('fused_annotation')
+  pdf(file.path(save_path, paste0(species_name, "_trajectory_by_celltype.pdf")), width = 12, height = 10)
+  print(plot_cells(cds, color_cells_by = "fused_annotation", label_cell_groups = TRUE, show_trajectory_graph = show_graph))
+  dev.off()
+  
+  # Plot 2: Trajectory colored by Pseudotime
+  pdf(file.path(save_path, paste0(species_name, "_trajectory_by_pseudotime.pdf")), width = 10, height = 8)
+  print(plot_cells(cds, color_cells_by = "pseudotime", show_trajectory_graph = show_graph))
+  dev.off()
+  
+  # Plot 3: Trajectory colored by Proliferation Score
+  pdf(file.path(save_path, paste0(species_name, "_trajectory_by_proliferation.pdf")), width = 10, height = 8)
+  print(plot_cells(cds, color_cells_by = "proliferation_score", show_trajectory_graph = show_graph))
+  dev.off()
+  
+  message(paste("--- Analysis for", species_name, "complete. ---"))
+  return(cds)
+}
+```
+
+```{r}
+# --- Execute the Trajectory Analysis Without Graph Overlay ---
+
+# Define the Proliferation Signature
+proliferation_signature <- c(
+  "Ki67-CyTOF" = 1.0, "HLA.DR-CyTOF" = 1.0, "pS6.S235.S236.-CyTOF" = 1.0,
+  "p4EBP1.T37.T46.-CyTOF" = 1.0, "pERK1.2.T202.Y204.-CyTOF" = 1.0,
+  "HLA.DR-QBC" = 1.0, "CD71-QBC" = 1.0, "CD25-QBC" = 1.0, "CD69-QBC" = 1.0
+)
+
+# Define the save path
+trajectory_save_path <- file.path(output_dir, "trajectory_analysis_results_no_graph")
+dir.create(trajectory_save_path, showWarnings = FALSE)
+
+# Run for Human data, hiding the graph
+human_cds <- run_monocle_trajectory(
+  seurat_obj = human_seurat_annotated,
+  species_name = "Human",
+  proliferation_sig = proliferation_signature,
+  save_path = trajectory_save_path,
+  show_graph = FALSE  # <-- ADD THIS LINE
+)
+
+# Run for Rhesus data, hiding the graph
+rhesus_cds <- run_monocle_trajectory(
+  seurat_obj = rhesus_seurat_annotated,
+  species_name = "Rhesus",
+  proliferation_sig = proliferation_signature,
+  save_path = trajectory_save_path,
+  show_graph = FALSE  # <-- ADD THIS LINE
+)
+```
+
+
+```{r}
+# --- Differential Expression Along Trajectories ---
+
+# 1. Perform graph test for Human data
+message("Running DEG test for Human...")
+human_deg <- graph_test(human_cds, neighbor_graph = "principal_graph", cores = 4)
+human_deg_sig <- human_deg %>% filter(q_value < 0.05)
+write.csv(human_deg_sig, file.path(trajectory_save_path, "human_trajectory_deg_results.csv"), row.names = FALSE)
+
+# 2. Perform graph test for Rhesus data
+message("Running DEG test for Rhesus...")
+rhesus_deg <- graph_test(rhesus_cds, neighbor_graph = "principal_graph", cores = 4)
+rhesus_deg_sig <- rhesus_deg %>% filter(q_value < 0.05)
+write.csv(rhesus_deg_sig, file.path(trajectory_save_path, "rhesus_trajectory_deg_results.csv"), row.names = FALSE)
+
+
+# --- Visualize Top Differentially Expressed Proteins ---
+
+# 3. Plot top 10 proteins for Human
+human_top_proteins <- human_deg_sig %>% arrange(desc(morans_I)) %>% pull(gene_short_name) %>% head(10)
+pdf(file.path(trajectory_save_path, "Human_Top_Proteins_in_Pseudotime.pdf"), width = 12, height = 10)
+print(plot_genes_in_pseudotime(human_cds[human_top_proteins, ], min_expr = 0.1))
+dev.off()
+
+# 4. Plot top 10 proteins for Rhesus
+rhesus_top_proteins <- rhesus_deg_sig %>% arrange(desc(morans_I)) %>% pull(gene_short_name) %>% head(10)
+pdf(file.path(trajectory_save_path, "Rhesus_Top_Proteins_in_Pseudotime.pdf"), width = 12, height = 10)
+print(plot_genes_in_pseudotime(rhesus_cds[rhesus_top_proteins, ], min_expr = 0.1))
+dev.off()
+
+message("Differential expression analysis complete.")
+```
+```{r}
+plot_pseudotime_heatmap <- function(cds_obj, top_markers, species_name, save_path) {
+  
+  # 1. Prepare data (same as before)
+  pseudotime_data <- pseudotime(cds_obj)
+  pseudotime_data <- pseudotime_data[is.finite(pseudotime_data)]
+  ordered_cells <- names(sort(pseudotime_data))
+  
+  expr_matrix <- SingleCellExperiment::counts(cds_obj)[top_markers, ordered_cells]
+  row_variances <- apply(expr_matrix, 1, var)
+  expr_matrix_filtered <- expr_matrix[row_variances > 0, ]
+  
+  if (nrow(expr_matrix_filtered) == 0) {
+    warning(paste("No markers with variance found for", species_name, "- skipping heatmap."))
+    return(NULL)
+  }
+  
+  scaled_matrix <- t(scale(t(expr_matrix_filtered)))
+  
+  # 2. Create annotation bars for the top of the heatmap
+  cell_annotations <- HeatmapAnnotation(
+    Cell_Type = colData(cds_obj)[ordered_cells, "fused_annotation"],
+    Pseudotime = anno_points(pseudotime_data[ordered_cells])
+  )
+  
+  # 3. Create the Heatmap with the correctly labeled Z-score legend
+  final_heatmap <- Heatmap(
+    scaled_matrix,
+    name = "Z-score", # <-- THIS SETS THE LEGEND TITLE
+    
+    # --- Appearance Options ---
+    cluster_columns = FALSE,
+    cluster_rows = TRUE,
+    show_column_names = FALSE,
+    column_title = paste("Protein Expression in", species_name, "(Cells Ordered by Pseudotime)"),
+    top_annotation = cell_annotations,
+    
+    # --- Legend Options ---
+    heatmap_legend_param = list(
+      title = "Z-score",
+      title_position = "topcenter",
+      legend_direction = "horizontal",
+      legend_width = unit(5, "cm")
+    )
+  )
+  
+  # 4. Save the plot to a PDF
+  pdf(file.path(save_path, paste0(species_name, "_Top_Proteins_Heatmap.pdf")), width = 12, height = 8)
+  draw(final_heatmap, heatmap_legend_side = "bottom") # Draw the heatmap with legend at the bottom
+  dev.off()
+  
+  message(paste("Saved final heatmap for", species_name))
+}
+```
+
+```{r}
+# --- Visualize Top Proteins with the Final, Corrected Heatmap ---
+
+# (This assumes you still have these objects from the previous steps)
+# human_cds, rhesus_cds, human_top_proteins, rhesus_top_proteins, trajectory_save_path
+
+# Create and save the final heatmap for Human data
+plot_pseudotime_heatmap(
+  cds_obj = human_cds,
+  top_markers = human_top_proteins,
+  species_name = "Human",
+  save_path = trajectory_save_path
+)
+
+# Create and save the final heatmap for Rhesus data
+plot_pseudotime_heatmap(
+  cds_obj = rhesus_cds,
+  top_markers = rhesus_top_proteins,
+  species_name = "Rhesus",
+  save_path = trajectory_save_path
+)
+```
+
+
+```{r}
+# --- Updated Custom Function to Plot Pseudotime with Cell Type Labels ---
+
+#' Plot UMAP colored by pseudotime with enhanced cell type labels
+#'
+#' @param cds_obj A monocle3 cds object after running order_cells().
+#' @param species_name A string for the plot title and filename (e.g., "Human").
+#' @param save_path The directory path where the PDF will be saved.
+#' @param label_size The font size for the cell type labels.
+#' @param label_alpha The transparency of the label background (0=transparent, 1=opaque).
+#' @param base_font_size The base font size for axis titles and legends.
+#' @param width The width of the output PDF file.
+#' @param height The height of the output PDF file.
+#'
+#' @return Generates and saves a PDF of the UMAP plot.
+plot_pseudotime_with_labels <- function(cds_obj,
+                                        species_name,
+                                        save_path,
+                                        label_size = 8,
+                                        label_alpha = 0.6,
+                                        base_font_size = 18,
+                                        width = 12,
+                                        height = 10) {
+
+  message(paste("--- Generating enhanced UMAP plot for", species_name, "---"))
+
+  # 1. Extract necessary data from the CDS object
+  plot_data <- data.frame(
+    UMAP_1 = reducedDims(cds_obj)$UMAP[, 1],
+    UMAP_2 = reducedDims(cds_obj)$UMAP[, 2],
+    pseudotime = pseudotime(cds_obj),
+    cell_type = colData(cds_obj)$fused_annotation
+  )
+
+  # 2. Calculate the center of each cell type cluster
+  label_positions <- plot_data %>%
+    group_by(cell_type) %>%
+    summarize(
+      median_UMAP_1 = median(UMAP_1),
+      median_UMAP_2 = median(UMAP_2)
+    )
+
+  # 3. Create the ggplot object
+  p <- ggplot(plot_data, aes(x = UMAP_1, y = UMAP_2)) +
+    geom_point(aes(color = pseudotime), size = 0.5, alpha = 0.8) +
+    scale_color_viridis_c(option = "plasma", name = "Pseudotime") +
+
+    # 4. Add translucent labels
+    geom_label_repel(
+      data = label_positions,
+      aes(x = median_UMAP_1, y = median_UMAP_2, label = cell_type),
+      size = label_size,
+      # NEW: Make the label background translucent but keep text opaque
+      fill = alpha("white", label_alpha),
+      box.padding = unit(0.7, "lines"),
+      point.padding = unit(0.4, "lines"),
+      segment.color = 'grey50',
+      max.overlaps = Inf
+    ) +
+
+    # 5. Add titles and theme for a publication-ready look
+    labs(
+      title = paste(species_name, "Trajectory"),
+      subtitle = "Cells colored by pseudotime with cell type labels"
+    ) +
+    theme_minimal(base_size = base_font_size) + # NEW: Set base font size for all text
+    theme(
+      panel.grid = element_blank(),
+      axis.ticks = element_blank(),
+      axis.text = element_blank(),
+      # NEW: Fine-tune text sizes for clarity
+      plot.title = element_text(size = base_font_size * 1.2, face = "bold"),
+      plot.subtitle = element_text(size = base_font_size * 0.9),
+      legend.title = element_text(size = base_font_size, face = "bold"),
+      legend.text = element_text(size = base_font_size * 0.8),
+      legend.position = "right"
+    )
+
+  # 6. Save the plot to a PDF file
+  file_name <- file.path(save_path, paste0(species_name, "_trajectory_pseudotime_with_labels_v2.pdf"))
+  pdf(file_name, width = width, height = height)
+  print(p)
+  dev.off()
+
+  message(paste("Plot saved to:", file_name))
+}
+```
+
+```{r}
+# --- Generate the Final, Enhanced UMAP Plots ---
+
+# This assumes you have already run the trajectory analysis and have your
+# human_cds and rhesus_cds objects and trajectory_save_path variable.
+
+# Create and save the plot for Human data with translucent labels
+plot_pseudotime_with_labels(
+  cds_obj = human_cds,
+  species_name = "Human",
+  save_path = trajectory_save_path,
+  label_size = 8,        # <-- Keep labels large
+  label_alpha = 0.6,     # <-- Adjust transparency (0 to 1)
+  base_font_size = 18    # <-- Adjust axis/legend text size
+)
+
+# Create and save the plot for Rhesus data
+plot_pseudotime_with_labels(
+  cds_obj = rhesus_cds,
+  species_name = "Rhesus",
+  save_path = trajectory_save_path,
+  label_size = 8,
+  label_alpha = 0.6,
+  base_font_size = 18
+)
+```
+
+
+
+
+#check the number of cells and number of markers in the human and rhesus seurat objects
+```{r}
+# For human data
+dims_human <- dim(human_seurat_annotated)
+cat("Number of features (markers) in human Seurat object:", dims_human[1], "\n")
+cat("Number of cells in human Seurat object:", dims_human[2], "\n")
+
+# For rhesus data
+dims_rhesus <- dim(rhesus_seurat_annotated)
+cat("Number of features (markers) in rhesus Seurat object:", dims_rhesus[1], "\n")
+cat("Number of cells in rhesus Seurat object:", dims_rhesus[2], "\n")
+```
+
+
+
+```{r}
+# --- Custom Function to Plot Proliferation Score with Cell Type Labels ---
+
+plot_proliferation_with_labels <- function(cds_obj,
+                                           species_name,
+                                           save_path,
+                                           label_size = 8,
+                                           label_alpha = 0.6,
+                                           base_font_size = 18,
+                                           width = 12,
+                                           height = 10) {
+
+  message(paste("--- Generating enhanced UMAP proliferation plot for", species_name, "---"))
+
+  # 1. Extract necessary data from the CDS object
+  plot_data <- data.frame(
+    UMAP_1 = reducedDims(cds_obj)$UMAP[, 1],
+    UMAP_2 = reducedDims(cds_obj)$UMAP[, 2],
+    # UPDATED: Use proliferation_score for coloring
+    proliferation_score = colData(cds_obj)$proliferation_score,
+    # UPDATED: Use your specified annotation column
+    cell_type = colData(cds_obj)$fused_annotation
+  )
+
+  # 2. Calculate the center of each cell type cluster
+  label_positions <- plot_data %>%
+    group_by(cell_type) %>%
+    summarize(
+      median_UMAP_1 = median(UMAP_1),
+      median_UMAP_2 = median(UMAP_2),
+      .groups = "drop"
+    )
+
+  # 3. Create the ggplot object
+  p <- ggplot(plot_data, aes(x = UMAP_1, y = UMAP_2)) +
+    geom_point(aes(color = proliferation_score), size = 0.5, alpha = 0.8) +
+    scale_color_viridis_c(option = "plasma", name = "Proliferation\nScore") +
+
+    # 4. Add translucent labels
+    geom_label_repel(
+      data = label_positions,
+      aes(x = median_UMAP_1, y = median_UMAP_2, label = cell_type),
+      size = label_size,
+      fill = alpha("white", label_alpha),
+      box.padding = unit(0.7, "lines"),
+      point.padding = unit(0.4, "lines"),
+      segment.color = 'grey50',
+      max.overlaps = Inf
+    ) +
+
+    # 5. Add titles and theme
+    labs(
+      title = paste(species_name, "Proliferation Score"),
+      subtitle = "Cells colored by proliferation score with cell type labels"
+    ) +
+    theme_minimal(base_size = base_font_size) +
+    theme(
+      panel.grid = element_blank(),
+      axis.ticks = element_blank(),
+      axis.text = element_blank(),
+      plot.title = element_text(size = base_font_size * 1.2, face = "bold"),
+      plot.subtitle = element_text(size = base_font_size * 0.9),
+      legend.title = element_text(size = base_font_size, face = "bold"),
+      legend.text = element_text(size = base_font_size * 0.8),
+      legend.position = "right"
+    )
+
+  # 6. Save the plot to a PDF file
+  file_name <- file.path(save_path, paste0(species_name, "_trajectory_proliferation_with_labels.pdf"))
+  pdf(file_name, width = width, height = height)
+  print(p)
+  dev.off()
+
+  message(paste("Plot saved to:", file_name))
+}
+```
+
+```{r}
+# --- Generate the Final, Enhanced UMAP Proliferation Plots ---
+
+# This assumes the 'trajectory_save_path' variable is already defined in your script
+# from: trajectory_save_path <- file.path(output_dir, "trajectory_analysis_results_no_graph")
+
+# Create and save the plot for Human data
+plot_proliferation_with_labels(
+  cds_obj = human_cds,
+  species_name = "Human",
+  save_path = trajectory_save_path
+)
+
+# Create and save the plot for Rhesus data
+plot_proliferation_with_labels(
+  cds_obj = rhesus_cds,
+  species_name = "Rhesus",
+  save_path = trajectory_save_path
+)
+
+message("Custom UMAP plots for proliferation have been generated and saved.")
+```
+
+```{r}
+# --- Custom Function to Plot UMAP Colored by Stimulation ---
+
+plot_by_stimulation <- function(cds_obj,
+                                species_name,
+                                save_path,
+                                label_size = 8,
+                                label_alpha = 0.6,
+                                base_font_size = 18,
+                                width = 12,
+                                height = 10) {
+
+  message(paste("--- Generating UMAP plot by stimulation for", species_name, "---"))
+
+  # 1. Extract necessary data from the CDS object
+  plot_data <- data.frame(
+    UMAP_1 = reducedDims(cds_obj)$UMAP[, 1],
+    UMAP_2 = reducedDims(cds_obj)$UMAP[, 2],
+    # UPDATED: Use the 'stimulation' column for coloring
+    stimulation = colData(cds_obj)$stimulation,
+    cell_type = colData(cds_obj)$fused_annotation
+  )
+
+  # 2. Calculate the center of each cell type cluster for labels
+  label_positions <- plot_data %>%
+    group_by(cell_type) %>%
+    summarize(
+      median_UMAP_1 = median(UMAP_1),
+      median_UMAP_2 = median(UMAP_2),
+      .groups = "drop"
+    )
+
+  # 3. Create the ggplot object
+  p <- ggplot(plot_data, aes(x = UMAP_1, y = UMAP_2)) +
+    # UPDATED: Color points by the 'stimulation' variable
+    geom_point(aes(color = stimulation), size = 0.7, alpha = 0.9) +
+    # Use a color scale suitable for discrete categories
+    scale_color_brewer(palette = "Set1", name = "Stimulation") +
+
+    # Add translucent cell type labels for context
+    geom_label_repel(
+      data = label_positions,
+      aes(x = median_UMAP_1, y = median_UMAP_2, label = cell_type),
+      size = label_size,
+      fill = alpha("white", label_alpha),
+      box.padding = unit(0.7, "lines")
+    ) +
+
+    # Add titles and theme
+    labs(
+      title = paste(species_name, "Cells by Stimulation"),
+      subtitle = "Cells colored by experimental condition with cell type labels"
+    ) +
+    theme_minimal(base_size = base_font_size) +
+    theme(
+      panel.grid = element_blank(),
+      axis.ticks = element_blank(),
+      axis.text = element_blank(),
+      plot.title = element_text(size = base_font_size * 1.2, face = "bold"),
+      legend.position = "right"
+    )
+
+  # Save the plot to a PDF file
+  file_name <- file.path(save_path, paste0(species_name, "_umap_by_stimulation.pdf"))
+  pdf(file_name, width = width, height = height)
+  print(p)
+  dev.off()
+
+  message(paste("Plot saved to:", file_name))
+}
+```
+
+```{r}
+# --- Generate UMAPs Colored by Stimulation ---
+
+# This assumes 'trajectory_save_path', 'human_cds', and 'rhesus_cds' are in your environment
+
+plot_by_stimulation(
+  cds_obj = human_cds,
+  species_name = "Human",
+  save_path = trajectory_save_path
+)
+
+plot_by_stimulation(
+  cds_obj = rhesus_cds,
+  species_name = "Rhesus",
+  save_path = trajectory_save_path
+)
+```
+
+```{r}
+# --- Custom Function to Plot Pseudotime Faceted by Stimulation ---
+
+plot_pseudotime_faceted_by_stimulation <- function(cds_obj,
+                                                   species_name,
+                                                   save_path,
+                                                   base_font_size = 16,
+                                                   width = 16,
+                                                   height = 8) {
+
+  message(paste("--- Generating faceted pseudotime plot for", species_name, "---"))
+
+  # 1. Extract necessary data
+  plot_data <- data.frame(
+    UMAP_1 = reducedDims(cds_obj)$UMAP[, 1],
+    UMAP_2 = reducedDims(cds_obj)$UMAP[, 2],
+    pseudotime = pseudotime(cds_obj),
+    stimulation = colData(cds_obj)$stimulation
+  )
+
+  # 2. Create the ggplot object
+  p <- ggplot(plot_data, aes(x = UMAP_1, y = UMAP_2)) +
+    geom_point(aes(color = pseudotime), size = 0.5, alpha = 0.8) +
+    scale_color_viridis_c(option = "plasma", name = "Pseudotime") +
+    
+    # UPDATED: Create separate panels for each stimulation group
+    facet_wrap(~ stimulation) +
+    
+    # Add titles and theme
+    labs(
+      title = paste(species_name, "Pseudotime Progression by Stimulation"),
+      subtitle = "Cells are separated by condition and colored by pseudotime"
+    ) +
+    theme_minimal(base_size = base_font_size) +
+    theme(
+      panel.grid = element_blank(),
+      axis.ticks = element_blank(),
+      axis.text = element_blank(),
+      # Add a border to the panels to make them distinct
+      panel.border = element_rect(color = "grey80", fill = NA),
+      strip.text = element_text(face = "bold", size = base_font_size) # Make facet titles bold
+    )
+
+  # 3. Save the plot to a PDF file
+  file_name <- file.path(save_path, paste0(species_name, "_pseudotime_faceted_by_stimulation.pdf"))
+  pdf(file_name, width = width, height = height)
+  print(p)
+  dev.off()
+
+  message(paste("Plot saved to:", file_name))
+}
+```
+
+```{r}
+# --- Generate Faceted Pseudotime UMAPs ---
+
+# This assumes 'trajectory_save_path', 'human_cds', and 'rhesus_cds' are in your environment
+
+plot_pseudotime_faceted_by_stimulation(
+  cds_obj = human_cds,
+  species_name = "Human",
+  save_path = trajectory_save_path
+)
+
+plot_pseudotime_faceted_by_stimulation(
+  cds_obj = rhesus_cds,
+  species_name = "Rhesus",
+  save_path = trajectory_save_path
+)
+```
+
+
+##Trajectory Analysis using Slingshot
+
+```{r}
+#Extract the Necessary Data
+
+human_assay_data <- GetAssayData(
+  object = human_integrated_annotated,
+  slot = "data",
+  assay = DefaultAssay(human_integrated_annotated)
+)
+
+rhesus_assay_data <- GetAssayData(
+  object = rhesus_integrated_annotated,
+  slot = "data",
+  assay = DefaultAssay(rhesus_integrated_annotated)
+)
+```
+
+```{r}
+# Extract cell metadata
+human_cell_metadata <- human_integrated_annotated@meta.data
+
+rhesus_cell_metadata <- rhesus_integrated_annotated@meta.data
+```
+
+```{r}
+# Extract UMAP embeddings
+human_umap_embeddings <- Embeddings(
+  object = human_integrated_annotated,
+  reduction = "umap"
+)
+
+rhesus_umap_embeddings <- Embeddings(
+  object = rhesus_integrated_annotated,
+  reduction = "umap"
+)
+```
+
+
+```{r}
+# Create SingleCellExperiment object
+human_sce <- SingleCellExperiment(
+  assays = list(logcounts = human_assay_data),
+  colData = human_cell_metadata,
+  reducedDims = list(UMAP = human_umap_embeddings)
+)
+
+rhesus_sce <- SingleCellExperiment(
+  assays = list(logcounts = rhesus_assay_data),
+  colData = rhesus_cell_metadata,
+  reducedDims = list(UMAP = rhesus_umap_embeddings)
+)
+
+#Assay Naming: In SingleCellExperiment, the assay containing normalized log-transformed counts is often named logcounts
+```
+
+```{r}
+# Run Slingshot
+human_sce <- slingshot(
+  human_sce,
+  clusterLabels = 'QBC_annotation_cross_species',
+  reducedDim = 'UMAP'
+)
+```
+
+```{r}
+rhesus_sce <- slingshot(
+  rhesus_sce,
+  clusterLabels = 'QBC_annotation_cross_species',
+  reducedDim = 'UMAP'
+)
+```
+
+#Visualize the Trajectories
+
+#Define Colors for Clusters
+```{r}
+# For human data
+human_clusters <- as.factor(human_sce$QBC_annotation_cross_species)
+human_colors <- colorRampPalette(brewer.pal(9, "Set1"))(length(levels(human_clusters)))
+names(human_colors) <- levels(human_clusters)
+
+# For rhesus data
+rhesus_clusters <- as.factor(rhesus_sce$QBC_annotation_cross_species)
+rhesus_colors <- colorRampPalette(brewer.pal(9, "Set1"))(length(levels(rhesus_clusters)))
+names(rhesus_colors) <- levels(rhesus_clusters)
+```
+
+#Plot UMAP with Trajectories
+
+#Human data
+```{r}
+tiff('/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/MARIO_CyTOF_and_QBC_single_cell_matching/cross_species_QBC_markers_clustering/Slingshot_Human_PBMCs_Pseudotime_Trajectory_Analysis.tiff', width = 12, height = 8, units = 'in', res = 200)
+
+# Plotting code
+plot(
+  reducedDims(human_sce)$UMAP,
+  col = human_colors[human_clusters],
+  pch = 16,
+  asp = 1,
+  main = "Human PBMCs Pseudotime Trajectory Analysis"
+)
+lines(SlingshotDataSet(human_sce), lwd = 2, col = 'black')
+
+# Adjust legend
+legend(
+  "topright",
+  legend = levels(human_clusters),
+  col = human_colors,
+  pch = 16,
+  cex = 0.6,
+  ncol = 2,
+  bty = "n"
+)
+
+# Close the device
+dev.off()
+```
+
+```{r}
+tiff('/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/MARIO_CyTOF_and_QBC_single_cell_matching/cross_species_QBC_markers_clustering/Slingshot_Rhesus_PBMCs_Pseudotime_Trajectory_Analysis.tiff', width = 12, height = 8, units = 'in', res = 200)
+
+# Plotting code
+plot(
+  reducedDims(rhesus_sce)$UMAP,
+  col = rhesus_colors[rhesus_clusters],
+  pch = 16,
+  asp = 1,
+  main = "Rhesus PBMCs Pseudotime Trajectory Analysis"
+)
+lines(SlingshotDataSet(rhesus_sce), lwd = 2, col = 'black')
+
+# Adjust legend
+legend(
+  "topright",
+  legend = levels(rhesus_clusters),
+  col = rhesus_colors,
+  pch = 16,
+  cex = 0.6,
+  ncol = 2,
+  bty = "n"
+)
+
+# Close the device
+dev.off()
+```
+
+
+#Bayesian Networks to Find Indirect Connection
+```{r}
+# Define the base directory for the BN outputs
+# (Assuming output_dir is already defined in your environment, e.g., output_dir <- "/Users/tzekaitan/... ")
+bn_output_dir <- file.path(output_dir, "Bayesian_Network_DAGs")
+
+# Define the 15 phospho-features used for the network
+phospho_markers <- c("pSTAT1.Y701.-CyTOF", "pSTAT3.Y705.-CyTOF", "IkBa.amino.terminal-CyTOF", 
+                     "p4EBP1.T37.T46.-CyTOF", "pZAP70.Syk.Y319.Y352.-CyTOF", "pS6.S235.S236.-CyTOF", 
+                     "pCREB.S133.-CyTOF", "pSTAT4.Y693.-CyTOF", "pSTAT5.Y694.-CyTOF", 
+                     "pTBK1.NAK.S172.-CyTOF", "pSTAT6.Y691.-CyTOF", "pPLCg2.Y579.-CyTOF", 
+                     "pERK1.2.T202.Y204.-CyTOF", "pP38.MAPK.T180.Y182.-CyTOF", "pMAPKAPK2.T334.-CyTOF")
+
+# Define the experimental conditions to iterate over
+conditions <- c("Basal", "CD40L", "GM-CSF")
+```
+
+
+#Define the Bayesian Network Generation Function
+```{r}
+generate_consensus_dag <- function(seurat_obj, 
+                                   cluster_annotation, 
+                                   stimulation_condition, 
+                                   phospho_features, 
+                                   species_name,
+                                   base_output_dir,
+                                   boot_replicates = 500,
+                                   confidence_threshold = 0.85) {
+  
+  message(paste("--- Generating DAG for", species_name, cluster_annotation, "under", stimulation_condition, "---"))
+  
+  # 1. Create nested directory structure: base_dir / Species / Cell_Type
+  safe_cluster_name <- gsub(" ", "_", cluster_annotation)
+  save_dir <- file.path(base_output_dir, species_name, safe_cluster_name)
+  
+  if (!dir.exists(save_dir)) {
+    dir.create(save_dir, recursive = TRUE)
+  }
+  
+  # 2. Subset the Seurat object
+  subset_cells <- subset(x = seurat_obj, 
+                         subset = fused_annotation == cluster_annotation & 
+                                  stimulation == stimulation_condition)
+  
+  # Check cell count threshold
+  if (ncol(subset_cells) < 100) {
+    warning(paste("Not enough cells (", ncol(subset_cells), ") for robust BN inference in", cluster_annotation, "-", stimulation_condition, ". Skipping."))
+    return(NULL)
+  }
+  
+  # 3. Extract the normalized data matrix
+  expr_matrix <- GetAssayData(subset_cells, slot = "data", assay = "Protein")[phospho_features, ]
+  expr_df <- as.data.frame(t(as.matrix(expr_matrix)))
+  
+  # --- Clean the Marker Names for Publication ---
+  colnames(expr_df) <- gsub("\\.-CyTOF$", "", colnames(expr_df))
+  colnames(expr_df) <- gsub("\\.$", "", colnames(expr_df))
+  
+  # 4. Remove zero-variance nodes
+  variances <- apply(expr_df, 2, var)
+  expr_df <- expr_df[, variances > 0]
+  
+  removed_nodes <- names(variances[variances == 0])
+  if (length(removed_nodes) > 0) {
+    message(paste("Removed zero-variance nodes:", paste(removed_nodes, collapse = ", ")))
+  }
+  
+  expr_df[] <- lapply(expr_df, as.numeric)
+  
+  # 5. Structure Learning
+  message(paste("Bootstrapping", boot_replicates, "network iterations..."))
+  boot_net <- boot.strength(data = expr_df, R = boot_replicates, algorithm = "hc")
+  consensus_dag <- averaged.network(boot_net, threshold = confidence_threshold)
+  
+  # 6. Convert to graphNEL for custom Rgraphviz styling
+  g <- bnlearn::as.graphNEL(consensus_dag)
+  node_names <- nodes(consensus_dag)
+  
+  # Assign pastel hex colors based on signaling families
+  node_fill_colors <- sapply(node_names, function(n) {
+    if (grepl("STAT", n)) return("#D6EAF8")            # Light Blue for STATs
+    if (grepl("ERK|P38|MAPK", n)) return("#FAD7A1")    # Light Orange for MAPKs
+    if (grepl("S6|4EBP1", n)) return("#D5F5E3")        # Light Green for mTOR/Translation
+    if (grepl("IkB|NFkB", n)) return("#E8DAEF")        # Light Purple for NFkB pathway
+    if (grepl("ZAP70|PLCg2|TBK1", n)) return("#FADBD8")# Light Red for proximal kinases
+    return("#EAECEE")                                  # Light Grey for others/CREB
+  })
+  
+  # Ensure the color vector is exactly named for Rgraphviz mapping
+  names(node_fill_colors) <- node_names
+  
+  nAttrs <- list()
+  nAttrs$fillcolor <- node_fill_colors
+  
+  global_attrs <- list(node = list(shape = "ellipse", 
+                                   fixedsize = FALSE, 
+                                   style = "filled", 
+                                   color = "grey20", 
+                                   fontsize = 12))
+  
+  # 7. Plot and Save
+  file_name <- file.path(save_dir, paste0(species_name, "_", 
+                                          safe_cluster_name, "_", 
+                                          gsub(" ", "_", stimulation_condition), "_DAG.pdf"))
+  
+  pdf(file_name, width = 10, height = 10)
+  
+  Rgraphviz::plot(g, 
+                  attrs = global_attrs, 
+                  nodeAttrs = nAttrs, 
+                  main = paste(species_name, cluster_annotation, "-", stimulation_condition, "\nConfidence >", confidence_threshold))
+  
+  dev.off()
+  
+  message(paste("Saved stylized DAG to:", file_name, "\n"))
+  
+  return(consensus_dag)
+}
+```
+
+#Set Up Variables and Execute
+#Human Dataset
+```{r}
+human_clusters <- c("Naive_CD4_T_cells", "Effector_CD8_T_cells", "B_cells", 
+                    "NK_cells", "Memory_CD4_T_cells", "Classical_Monocytes", 
+                    "Platelets", "Non_classical_Monocytes", "Dendritic_cells")
+
+# Initialize an empty list to store the generated DAG objects
+human_dags <- list()
+
+message("\n=======================================================")
+message("Starting Human Dataset Bayesian Network Analysis...")
+message("=======================================================\n")
+
+for (cluster in human_clusters) {
+  for (stim in conditions) {
+    list_name <- paste(cluster, stim, sep = "_")
+    
+    human_dags[[list_name]] <- generate_consensus_dag(seurat_obj = human_seurat_annotated, 
+                                                      cluster_annotation = cluster, 
+                                                      stimulation_condition = stim, 
+                                                      phospho_features = phospho_markers, 
+                                                      species_name = "Human", 
+                                                      base_output_dir = bn_output_dir)
+  }
+}
+```
+#Rhesus Dataset
+```{r}
+rhesus_clusters <- c("Platelets", "NK_cells", "CD8_T_cells", "Mixed_Lymphoid", 
+                     "Classical_Monocytes", "Memory_CD8_T_cells", "Platelets_activated", 
+                     "Activated_Lymphoid", "Dendritic_cells", "B_cells", "Activated_B_cells")
+
+# Initialize an empty list to store the generated DAG objects
+rhesus_dags <- list()
+
+message("\n=======================================================")
+message("Starting Rhesus Dataset Bayesian Network Analysis...")
+message("=======================================================\n")
+
+for (cluster in rhesus_clusters) {
+  for (stim in conditions) {
+    list_name <- paste(cluster, stim, sep = "_")
+    
+    rhesus_dags[[list_name]] <- generate_consensus_dag(seurat_obj = rhesus_seurat_annotated, 
+                                                       cluster_annotation = cluster, 
+                                                       stimulation_condition = stim, 
+                                                       phospho_features = phospho_markers, 
+                                                       species_name = "Rhesus", 
+                                                       base_output_dir = bn_output_dir)
+  }
+}
+
+message("\n--- All Bayesian Network analyses complete! ---")
+```
+

@@ -1,0 +1,6 @@
+"Cluster","p_value","test","adj_p_value"
+"B_cells",0.1,"Wilcoxon rank-sum",0.25
+"NK_cells",1,"Wilcoxon rank-sum",1
+"Classical_Monocytes",0.7,"Wilcoxon rank-sum",0.875
+"Platelets",0.1,"Wilcoxon rank-sum",0.25
+"Dendritic_cells",0.7,"Wilcoxon rank-sum",0.875

@@ -1,0 +1,25 @@
+# R
+.Rhistory
+.RData
+.Ruserdata
+*.Rproj.user
+# NOTE: processed .rds objects ARE tracked in this repo (processed_data/)
+
+# Python
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+*.egg-info/
+.venv/
+
+# Data / large binaries (archived on Zenodo, not git)
+*.fcs
+*.h5ad
+*.h5
+data/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.tiff
+*.tif

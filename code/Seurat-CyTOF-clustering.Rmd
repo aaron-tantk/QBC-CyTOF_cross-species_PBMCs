@@ -1,0 +1,1989 @@
+---
+title: "Seurat-CyTOF-clustering"
+output: html_document
+---
+
+```{r}
+#install required packages
+install.packages("Seurat")
+install.packages("flowCore")
+install.packages("readxl")
+install.packages("tidyverse")
+install.packages("spectre")
+install.packages("tools")
+```
+
+```{r}
+# load required packages
+library(BiocManager)
+library(Seurat)
+library(flowCore)
+library(readxl)
+library(tidyverse)
+library(slingshot)
+library(cowplot)
+library(ggplot2)
+library(dplyr)
+library(spectre)
+library(RColorBrewer)
+library(pheatmap)
+library(monocle3)
+library(tools)
+library(ggrepel)
+```
+
+```{r}
+#Define species-specific cell surface specific markers to be used for clustering
+
+human_markers <- c("CD235a", "CD45", "CD61", "CD7", "CD33", "CD11c", 
+                   "CD123", "CD14", "CD11b", "CD8", "CD4", "CD3", 
+                   "CD66", "CD16", "CD1c", "BDCA3", "CD45RA", 
+                   "CD161", "CCR7", "CD19", "IgM", "CD56", "HLA-DR", 
+                   "Ki67", "FoxP3")
+  
+rhesus_markers <- c("CD233", "CD45", "CD61", "CD7", "CD33", "CD11c", 
+                    "CD123", "CD14", "CD11b", "CD8", "CD4", "CD3", 
+                    "CD66", "CD16", "CD1c", "BDCA3", "CD45RA", 
+                    "CD161", "CCR7", "CD20", "IgM", "CD56", "HLA-DR", 
+                    "Ki67", "FoxP3")
+
+#Define intracellular phospho signaling markers
+intracellular_phospho_markers <- c("pSTAT1(Y701)", "pSTAT3(Y705)", "IkBa-amino-terminal", "p4EBP1(T37-T46)", "pZAP70-Syk(Y319-Y352)", "pS6(S235-S236)", "pCREB(S133)", "pSTAT4(Y693)", "pSTAT5(Y694)", "pTBK1/NAK(S172)", "pSTAT6(Y691)", "pPLCg2(Y579)", "pERK1-2(T202-Y204)", "pP38-MAPK(T180-Y182)", "pMAPKAPK2(T334)")
+```
+
+
+```{r}
+#full human and rhesus CyTOF panels, respectively
+human_metal_mapping <- c(
+    "In113Di" = "CD235a",
+    "In115Di" = "CD45",
+    "La139Di" = "pSTAT3(Y705)",
+    "Ce140Di" = "CD61",	
+    "Pr141Di" = "CD7",
+    "Nd142Di" = "CD33",
+    "Nd143Di" = "CD11c", 
+    "Nd144Di" = "pMAPKAPK2(T334)", 
+    "Nd145Di" = "pCREB(S133)", 
+    "Nd146Di" = "pPLCg2(Y579)", 
+    "Sm147Di" = "pSTAT1(Y701)",
+    "Nd148Di" = "CD123",
+    "Sm149Di" = "pSTAT5(Y694)", 
+    "Sm150Di" = "pS6(S235-S236)",	
+    "Eu151Di" = "CD14", 
+    "Sm152Di" = "pERK1-2(T202-Y204)",
+    "Eu153Di" = "CD11b", 
+    "Sm154Di" = "pP38-MAPK(T180-Y182)", 
+    "Gd155Di" = "CD8", 
+    "Gd156Di" = "CD4", 
+    "Gd157Di" = "CD3", 
+    "Gd158Di" = "CD66", 
+    "Tb159Di" = "CD16", 
+    "Gd160Di" = "pZAP70-Syk(Y319-Y352)", 
+    "Dy161Di" = "pTBK1/NAK(S172)", 
+    "Dy162Di" = "CD1c", 
+    "Dy163Di" = "IkBa-amino-terminal", 
+    "Dy164Di" = "BDCA3", 
+    "Ho165Di" = "pSTAT6(Y691)", 	
+    "Er166Di" = "CD45RA", 
+    "Er167Di" = "FoxP3", 
+    "Er168Di" = "CD161", 
+    "Tm169Di" = "Ki67", 
+    "Er170Di" = "pSTAT4(Y693)", 
+    "Yb171Di" = "CCR7", 
+    "Yb172Di" = "p4EBP1(T37-T46)", 
+    "Yb173Di" = "CD19", 
+    "Yb174Di" = "IgM", 
+    "Lu175Di" = "CD56", 	
+    "Yb176Di" = "HLA-DR"
+)
+
+rhesus_metal_mapping <- c(
+    "In113Di" = "CD233",
+    "In115Di" = "CD45",
+    "La139Di" = "pSTAT3(Y705)",
+    "Ce140Di" = "CD61",	
+    "Pr141Di" = "CD7",
+    "Nd142Di" = "CD33",
+    "Nd143Di" = "CD11c", 
+    "Nd144Di" = "pMAPKAPK2(T334)", 
+    "Nd145Di" = "pCREB(S133)", 
+    "Nd146Di" = "pPLCg2(Y579)", 
+    "Sm147Di" = "pSTAT1(Y701)",
+    "Nd148Di" = "CD123",
+    "Sm149Di" = "pSTAT5(Y694)", 
+    "Sm150Di" = "pS6(S235-S236)",	
+    "Eu151Di" = "CD14", 
+    "Sm152Di" = "pERK1-2(T202-Y204)",
+    "Eu153Di" = "CD11b", 
+    "Sm154Di" = "pP38-MAPK(T180-Y182)", 
+    "Gd155Di" = "CD8", 
+    "Gd156Di" = "CD4", 
+    "Gd157Di" = "CD3", 
+    "Gd158Di" = "CD66", 
+    "Tb159Di" = "CD16", 
+    "Gd160Di" = "pZAP70-Syk(Y319-Y352)", 
+    "Dy161Di" = "pTBK1/NAK(S172)", 
+    "Dy162Di" = "CD1c", 
+    "Dy163Di" = "IkBa-amino-terminal", 
+    "Dy164Di" = "BDCA3", 
+    "Ho165Di" = "pSTAT6(Y691)", 	
+    "Er166Di" = "CD45RA", 
+    "Er167Di" = "FoxP3", 
+    "Er168Di" = "CD161", 
+    "Tm169Di" = "Ki67", 
+    "Er170Di" = "pSTAT4(Y693)", 
+    "Yb171Di" = "CCR7", 
+    "Yb172Di" = "p4EBP1(T37-T46)", 
+    "Yb173Di" = "CD20", 
+    "Yb174Di" = "IgM", 
+    "Lu175Di" = "CD56", 	
+    "Yb176Di" = "HLA-DR"
+)
+```
+
+
+##Function to process human cytof datasets
+```{r}
+process_human_cytof_data <- function(
+  human_files, 
+  human_metal_mapping,  # Added metal mapping parameter
+  human_markers,  # surface markers only
+  intracellular_phospho_markers, # phospho markers
+  cofactor = 5,
+  unwanted_cols = NULL,
+  output_plot_path
+){
+  # Initialize a list to store processed data frames
+  processed_data_list <- list()
+  
+  # Loop through each .fcs file
+  for(i in seq_along(human_files)){
+    file <- human_files[i]
+    sample_name <- tools::file_path_sans_ext(basename(file))
+    cat("Processing file:", file, "\n")
+    
+    # Read .fcs file
+    fs_out <- read.FCS(file, transformation = FALSE, truncate_max_range = FALSE)
+    
+    # Extract expression data as a data frame
+    expr_df <- as.data.frame(exprs(fs_out))
+    cat("Original Expression data dimensions:", dim(expr_df), "\n")
+    
+    # Map metal channels to marker names using the provided mapping
+    original_colnames <- colnames(expr_df)
+    mapped_colnames <- human_metal_mapping[original_colnames]
+    
+    # Check if any columns couldn't be mapped
+    unmapped_cols <- original_colnames[is.na(mapped_colnames)]
+    if(length(unmapped_cols) > 0){
+      warning(paste("The following columns could not be mapped:", 
+                   paste(unmapped_cols, collapse=", ")))
+    }
+    
+    # Replace NA values in mapping with original names
+    mapped_colnames[is.na(mapped_colnames)] <- original_colnames[is.na(mapped_colnames)]
+    colnames(expr_df) <- mapped_colnames
+    
+    # Remove unwanted columns if provided
+    if(!is.null(unwanted_cols)){
+      cols_to_remove <- unwanted_cols[unwanted_cols %in% colnames(expr_df)]
+      if(length(cols_to_remove) > 0){
+        expr_df <- expr_df[, !(colnames(expr_df) %in% cols_to_remove)]
+        cat("After removing unwanted columns, dimensions:", dim(expr_df), "\n")
+      }
+    }
+    
+    # Get all markers (surface + phospho)
+    all_markers <- c(human_markers, intracellular_phospho_markers)
+    
+    # Subset to relevant markers and handle missing markers
+    available_markers <- intersect(all_markers, colnames(expr_df))
+    missing_markers <- setdiff(all_markers, available_markers)
+    
+    if(length(missing_markers) > 0){
+      for(m in missing_markers){
+        expr_df[[m]] <- 0
+        warning(paste("Marker", m, "is missing in file", file, "- filled with zeros."))
+      }
+    }
+    
+    # Ensure all markers are present
+    expr_df <- expr_df[, all_markers, drop = FALSE]
+    cat("After subsetting to all markers, dimensions:", dim(expr_df), "\n")
+    
+    # Check for non-numeric data
+    if(!all(sapply(expr_df, is.numeric))){
+      stop(paste("Non-numeric values found in the expression data of file:", file))
+    }
+    
+    # Normalize using arcsinh transformation
+    expr_normalized <- asinh(expr_df / cofactor)
+    cat("Applied arcsinh normalization with cofactor =", cofactor, "\n")
+    
+    # Store the normalized data with sample information
+    expr_normalized$sample <- sample_name
+    processed_data_list[[i]] <- expr_normalized
+  }
+  
+  # Combine all processed data frames
+  combined_data <- do.call(rbind, processed_data_list)
+  
+  # Create cell names
+  cell_names <- paste0(combined_data$sample, "_cell", seq_len(nrow(combined_data)))
+  rownames(combined_data) <- cell_names
+  
+  # Remove sample column and convert to matrix
+  combined_data$sample <- NULL
+  combined_matrix <- as.matrix(combined_data)
+  
+  # Create Seurat object with the transposed matrix
+  human_seurat <- CreateSeuratObject(
+    counts = t(combined_matrix),
+    project = "Merged_Human_CyTOF",
+    assay = "CyTOF",
+    min.cells = 0,
+    min.features = 0
+  )
+  
+  # Add metadata
+  human_seurat$species <- "Human"
+  human_seurat$sample <- sub("_cell.*", "", colnames(human_seurat))
+  
+  # Normalize and scale data (using only surface markers for analysis)
+  human_seurat <- NormalizeData(
+    object = human_seurat,
+    normalization.method = "CLR",
+    margin = 2,
+    assay = "CyTOF"
+  )
+  
+  human_seurat <- ScaleData(
+    object = human_seurat,
+    features = human_markers,  # Only scale surface markers
+    assay = "CyTOF",
+    verbose = FALSE
+  )
+  
+  # Run PCA on surface markers only
+  human_seurat <- RunPCA(
+    object = human_seurat,
+    features = human_markers,
+    assay = "CyTOF",
+    verbose = FALSE
+  )
+  
+  # Find variable features using surface markers only
+  human_seurat <- FindVariableFeatures(
+    object = human_seurat,
+    selection.method = "vst",
+    nfeatures = length(human_markers),
+    assay = "CyTOF",
+    verbose = FALSE
+  )
+  
+  # Plot variable features
+  top10 <- head(VariableFeatures(human_seurat), 10)
+  plot1 <- VariableFeaturePlot(human_seurat, assay = "CyTOF")
+  plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+  
+  # Save plot
+  png(output_plot_path, width = 800, height = 600)
+  print(plot2)
+  dev.off()
+  
+  return(human_seurat)
+}
+```
+
+##Function to process rhesus cytof datasets
+```{r}
+process_rhesus_cytof_data <- function(
+  rhesus_files, 
+  rhesus_metal_mapping,  # Added metal mapping parameter
+  rhesus_markers,  # surface markers only
+  intracellular_phospho_markers, # phospho markers
+  cofactor = 5,
+  unwanted_cols = NULL,
+  output_plot_path
+){
+  # Initialize a list to store processed data frames
+  processed_data_list <- list()
+  
+  # Loop through each .fcs file
+  for(i in seq_along(rhesus_files)){
+    file <- rhesus_files[i]
+    sample_name <- tools::file_path_sans_ext(basename(file))
+    cat("Processing file:", file, "\n")
+    
+    # Read .fcs file
+    fs_out <- read.FCS(file, transformation = FALSE, truncate_max_range = FALSE)
+    
+    # Extract expression data as a data frame
+    expr_df <- as.data.frame(exprs(fs_out))
+    cat("Original Expression data dimensions:", dim(expr_df), "\n")
+    
+    # Map metal channels to marker names using the provided mapping
+    original_colnames <- colnames(expr_df)
+    mapped_colnames <- rhesus_metal_mapping[original_colnames]
+    
+    # Check if any columns couldn't be mapped
+    unmapped_cols <- original_colnames[is.na(mapped_colnames)]
+    if(length(unmapped_cols) > 0){
+      warning(paste("The following columns could not be mapped:", 
+                   paste(unmapped_cols, collapse=", ")))
+    }
+    
+    # Replace NA values in mapping with original names
+    mapped_colnames[is.na(mapped_colnames)] <- original_colnames[is.na(mapped_colnames)]
+    colnames(expr_df) <- mapped_colnames
+    
+    # Remove unwanted columns if provided
+    if(!is.null(unwanted_cols)){
+      cols_to_remove <- unwanted_cols[unwanted_cols %in% colnames(expr_df)]
+      if(length(cols_to_remove) > 0){
+        expr_df <- expr_df[, !(colnames(expr_df) %in% cols_to_remove)]
+        cat("After removing unwanted columns, dimensions:", dim(expr_df), "\n")
+      }
+    }
+    
+    # Get all markers (surface + phospho)
+    all_markers <- c(rhesus_markers, intracellular_phospho_markers)
+    
+    # Subset to relevant markers and handle missing markers
+    available_markers <- intersect(all_markers, colnames(expr_df))
+    missing_markers <- setdiff(all_markers, available_markers)
+    
+    if(length(missing_markers) > 0){
+      for(m in missing_markers){
+        expr_df[[m]] <- 0
+        warning(paste("Marker", m, "is missing in file", file, "- filled with zeros."))
+      }
+    }
+    
+    # Ensure all markers are present
+    expr_df <- expr_df[, all_markers, drop = FALSE]
+    cat("After subsetting to all markers, dimensions:", dim(expr_df), "\n")
+    
+    # Check for non-numeric data
+    if(!all(sapply(expr_df, is.numeric))){
+      stop(paste("Non-numeric values found in the expression data of file:", file))
+    }
+    
+    # Normalize using arcsinh transformation
+    expr_normalized <- asinh(expr_df / cofactor)
+    cat("Applied arcsinh normalization with cofactor =", cofactor, "\n")
+    
+    # Store the normalized data with sample information
+    expr_normalized$sample <- sample_name
+    processed_data_list[[i]] <- expr_normalized
+  }
+  
+  # Combine all processed data frames
+  combined_data <- do.call(rbind, processed_data_list)
+  
+  # Create cell names
+  cell_names <- paste0(combined_data$sample, "_cell", seq_len(nrow(combined_data)))
+  rownames(combined_data) <- cell_names
+  
+  # Remove sample column and convert to matrix
+  combined_data$sample <- NULL
+  combined_matrix <- as.matrix(combined_data)
+  
+  # Create Seurat object with the transposed matrix
+  rhesus_seurat <- CreateSeuratObject(
+    counts = t(combined_matrix),
+    project = "Merged_Rhesus_CyTOF",
+    assay = "CyTOF",
+    min.cells = 0,
+    min.features = 0
+  )
+  
+  # Add metadata
+  rhesus_seurat$species <- "Rhesus"
+  rhesus_seurat$sample <- sub("_cell.*", "", colnames(rhesus_seurat))
+  
+  # Normalize and scale data (using only surface markers for analysis)
+  rhesus_seurat <- NormalizeData(
+    object = rhesus_seurat,
+    normalization.method = "CLR",
+    margin = 2,
+    assay = "CyTOF"
+  )
+  
+  rhesus_seurat <- ScaleData(
+    object = rhesus_seurat,
+    features = rhesus_markers,  # Only scale surface markers
+    assay = "CyTOF",
+    verbose = FALSE
+  )
+  
+  # Run PCA on surface markers only
+  rhesus_seurat <- RunPCA(
+    object = rhesus_seurat,
+    features = rhesus_markers,
+    assay = "CyTOF",
+    verbose = FALSE
+  )
+  
+  # Find variable features using surface markers only
+  rhesus_seurat <- FindVariableFeatures(
+    object = rhesus_seurat,
+    selection.method = "vst",
+    nfeatures = length(rhesus_markers),
+    assay = "CyTOF",
+    verbose = FALSE
+  )
+  
+  # Plot variable features
+  top10 <- head(VariableFeatures(rhesus_seurat), 10)
+  plot1 <- VariableFeaturePlot(rhesus_seurat, assay = "CyTOF")
+  plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+  
+  # Save plot
+  png(output_plot_path, width = 800, height = 600)
+  print(plot2)
+  dev.off()
+  
+  return(rhesus_seurat)
+}
+```
+
+#Define File Paths to .fcs Datasets
+# subsetted 12k single cells from each sample
+```{r}
+# Human .fcs file paths
+Human_AT_Stanford_cytof <- "/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/data/Human_CyTOF_data/Hu_AT_Singlets_12k.fcs"
+
+Human_DM_Stanford_cytof <- "/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/data/Human_CyTOF_data/Hu_DM_Singlets_12k.fcs"
+
+Human_YH_Stanford_cytof <- "/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/data/Human_CyTOF_data/Hu_YH_Singlets_12k.fcs"
+
+# Rhesus .fcs file paths
+Rhesus_354_Stanford_cytof <- "/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/data/Rhesus_CyTOF_data/Rh_354_Singlets_12k.fcs"
+
+Rhesus_355_Stanford_cytof <- "/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/data/Rhesus_CyTOF_data/Rh_355_Singlets_12k.fcs"
+
+Rhesus_356_Stanford_cytof <- "/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/data/Rhesus_CyTOF_data/Rh_356_Singlets_12k.fcs"
+```
+
+#Create Vectors of File Paths
+```{r}
+human_files <- c(Human_AT_Stanford_cytof, 
+                Human_DM_Stanford_cytof, 
+                Human_YH_Stanford_cytof)
+
+# Vector of Rhesus .fcs files
+rhesus_files <- c(Rhesus_354_Stanford_cytof, 
+                  Rhesus_355_Stanford_cytof, 
+                  Rhesus_356_Stanford_cytof)
+```
+
+#Define Output Paths for Variable Feature Plots
+```{r}
+output_plot_human <- "/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/Seurat_CyTOF_clustering/variable_feature_plot_human_markers.png"
+
+output_plot_rhesus <- "/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/Seurat_CyTOF_clustering/variable_feature_plot_rhesus_markers.png"
+```
+
+#Call the Functions to Process Datasets
+```{r}
+# Process Human datasets with cofactor = 5
+human_seurat <- process_human_cytof_data(
+  human_files = human_files,
+  human_metal_mapping = human_metal_mapping,
+  human_markers = human_markers,
+  intracellular_phospho_markers = intracellular_phospho_markers,
+  cofactor = 5,
+  output_plot_path = output_plot_human
+)
+```
+
+
+```{r}
+# Process Rhesus datasets with cofactor = 5
+rhesus_seurat <- process_rhesus_cytof_data(
+  rhesus_files = rhesus_files,
+  rhesus_metal_mapping = rhesus_metal_mapping,
+  rhesus_markers = rhesus_markers,
+  intracellular_phospho_markers = intracellular_phospho_markers,
+  cofactor = 5,
+  output_plot_path = output_plot_rhesus
+)
+```
+
+#Elbow Plot for Human
+```{r}
+tiff("/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/Seurat_CyTOF_clustering/human_elbowplot.tiff")
+
+ElbowPlot(human_seurat)
+
+dev.off()
+```
+
+#Elbow Plot for Rhesus
+```{r}
+tiff("/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/Seurat_CyTOF_clustering/rhesus_elbowplot.tiff")
+
+ElbowPlot(rhesus_seurat)
+
+dev.off()
+```
+
+#Run UMAP for Human
+```{r}
+# Run UMAP using selected PCs - 15
+human_seurat <- RunUMAP(human_seurat, dims = 1:16)
+```
+
+#Run UMAP for Rhesus
+```{r}
+# Run UMAP using selected PCs - 14
+rhesus_seurat <- RunUMAP(rhesus_seurat, dims = 1:16)
+```
+
+#Cluster for Human
+```{r}
+#FindNeighbors() constructs a KNN graph based on the PCs
+human_seurat <- FindNeighbors(human_seurat, dims = 1:16)
+
+#computing the neighborhood graph and find clusters
+#FindClusters() identifies clusters using the Louvain algorithm
+#The resolution parameter affects the number of clusters; higher values lead to more clusters
+human_seurat <- FindClusters(human_seurat, resolution = 0.5)
+```
+
+#Cluster for Rhesus
+```{r}
+#FindNeighbors() constructs a KNN graph based on the PCs
+rhesus_seurat <- FindNeighbors(rhesus_seurat, dims = 1:16)
+
+#computing the neighborhood graph and find clusters
+#FindClusters() identifies clusters using the Louvain algorithm
+#The resolution parameter affects the number of clusters; higher values lead to more clusters
+rhesus_seurat <- FindClusters(rhesus_seurat, resolution = 0.5)
+```
+
+#Visualize the Clusters on UMAP - Human
+```{r}
+# UMAP plot colored by seurat clusters - human
+tiff("/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/Seurat_CyTOF_clustering/human_UMAP_seurat_clusters.tiff", width = 12, height = 8, units = 'in', res = 200)
+
+DimPlot(human_seurat, reduction = "umap", group.by = "seurat_clusters", label = FALSE, repel = FALSE)
+
+dev.off()
+```
+
+```{r}
+# UMAP plot colored by samples - human
+tiff("/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/Seurat_CyTOF_clustering/human_UMAP_donors.tiff", width = 12, height = 8, units = 'in', res = 200)
+
+DimPlot(human_seurat, reduction = "umap", group.by = "sample", label = FALSE, repel = FALSE)
+
+dev.off()
+```
+
+
+#Visualize the Clusters on UMAP - Rhesus
+```{r}
+# UMAP plot colored by seurat clusters - rhesus
+tiff("/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/Seurat_CyTOF_clustering/rhesus_UMAP_seurat_clusters.tiff", width = 12, height = 8, units = 'in', res = 200)
+
+DimPlot(rhesus_seurat, reduction = "umap", group.by = "seurat_clusters", label = FALSE, repel = FALSE)
+
+dev.off()
+```
+
+```{r}
+# UMAP plot colored by samples - rhesus
+tiff("/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/Seurat_CyTOF_clustering/rhesus_UMAP_donors.tiff", width = 12, height = 8, units = 'in', res = 200)
+
+DimPlot(rhesus_seurat, reduction = "umap", group.by = "sample", label = FALSE, repel = FALSE)
+
+dev.off()
+```
+
+
+#Analyze Cluster Markers for Cluster Annotation - Human
+```{r}
+# Find markers for each cluster - human
+human_seurat.markers <- FindAllMarkers(human_seurat, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+
+human_seurat.markers %>%
+    group_by(cluster) %>%
+    slice_max(n = 20, order_by = avg_log2FC)
+
+write.csv(human_seurat.markers, file = "/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/Seurat_CyTOF_clustering/human_seurat_top_20_markers_for_every_cluster.csv", row.names = FALSE)
+```
+
+#Analyze Cluster Markers for Cluster Annotation - Rhesus
+```{r}
+# Find markers for each cluster - human
+rhesus_seurat.markers <- FindAllMarkers(rhesus_seurat, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+
+rhesus_seurat.markers %>%
+    group_by(cluster) %>%
+    slice_max(n = 20, order_by = avg_log2FC)
+
+write.csv(rhesus_seurat.markers, file = "/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/Seurat_CyTOF_clustering/rhesus_seurat_top_20_markers_for_every_cluster.csv", row.names = FALSE)
+```
+
+```{r}
+# Plot all the features for every cluster in a heatmap - human
+
+tiff("/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/Seurat_CyTOF_clustering/human_heatmap_for_every_cluster.tiff", width = 20, height = 16, units = 'in', res = 200)
+
+DoHeatmap(human_seurat, features = human_markers, group.by = "seurat_clusters", draw.lines = TRUE)
+
+dev.off()
+```
+
+```{r}
+# Plot all the features for every cluster in a heatmap - rhesus
+
+tiff("/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/Seurat_CyTOF_clustering/rhesus_heatmap_for_every_cluster.tiff", width = 20, height = 16, units = 'in', res = 200)
+
+DoHeatmap(rhesus_seurat, features = rhesus_markers, group.by = "seurat_clusters", draw.lines = TRUE)
+
+dev.off()
+```
+
+#Annotate clusters
+#It is important to have well annotated clusters of the CyTOF dataset based on cell surface markers, from our knowledge when gating, for these datasets
+#This will be important for us when applying single cell matching of each respective dataset, by MARIO, that will allow us to carryover/bridge the annotated single cells, from the immunophenotypic clusters, in the CyTOF dataset to the QBC dataset, since we will have limited shared features between the QBC and CyTOF datasets.
+#Annotated single cells from the CyTOF will guide/supervise us as a secondary sanity check after single cell matching, by MARIO, when concatenating all the surface and intracellular features in these cross-species datasets.
+```{r}
+human.cluster.ids <- c(
+   "Resting_CD4_T_cells", #cluster 0  (IkBa+, CD45RA+)
+   "CD8_T_cells", #cluster 1
+   "NK_cells", #cluster 2  (CD16+CD161+CD56+)
+   "Activated_B_cells", #cluster 3  (high p4EBP1, pSTAT4/6, pPLCg2, pZAP70)
+   "CD4_T_cells", #cluster 4  (pSTAT1+, pTBK1+)
+   "Classical_monocytes", #cluster 5  (p4EBP1+, pSTAT1+, Ki67+)
+   "Classical_monocytes", #cluster 6  (similar to cluster 5)
+   "CD4_T_cells", #cluster 7
+   "CD161_CD8_T_cells", #cluster 8  (CD161hiCD8+)
+   "CD56_CD8_T_cells", #cluster 9  (CD56+CD8+)
+   "DC1", #cluster 10  (BDCA3+CD11c+, pSTAT1+)
+   "Proliferating_pDCs", #cluster 11  (CD123hi, Ki67+, pSTAT5+)
+   "Proliferating_DCs", #cluster 12  (highest Ki67, multiple pSTATs)
+   "Proliferating_myeloid", #cluster 13  (Ki67+, pSTAT3+)
+   "Resting_B_cells", #cluster 14  (pZAP70+, multiple pSTATs)
+   "Non_classical_monocytes" #cluster 15  (CD16+, pSTAT5+, pZAP70+)
+)
+```
+
+```{r}
+rhesus.cluster.ids <- c(
+   "CD4_T_cells", #cluster 0  (high pSTAT1)
+   "CD8_T_cells", #cluster 1
+   "B_cells", #cluster 2  (high pSTAT4, pSTAT6)
+   "Granulocytes", #cluster 3  (multiple phos markers: pPLCg2, pSTAT3, pSTAT5, pERK1-2)
+   "Activated_DCs", #cluster 4  (high Ki67, pSTAT1)
+   "NK_cells", #cluster 5
+   "Classical_monocytes", #cluster 6  (high pZAP70)
+   "Non_classical_monocytes_DCs", #cluster 7  (high pTBK1, pSTAT1)
+   "Proliferating_DCs", #cluster 8  (highest Ki67, high pSTAT signaling)
+   "Activated_myeloid", #cluster 9  (high Ki67, pCREB)
+   "CD4_T_cells", #cluster 10  (naive, high CD45RA)
+   "Plasmacytoid_DCs", #cluster 11  (high Ki67, pSTAT signaling)
+   "B_cells" #cluster 12
+)
+```
+
+```{r}
+#Apply annotation/labels to clusters - human
+names(human.cluster.ids) <- levels(human_seurat)
+human_seurat_annotated <- RenameIdents(human_seurat, human.cluster.ids)
+```
+
+```{r}
+#Apply annotation/labels to clusters - rhesus
+names(rhesus.cluster.ids) <- levels(rhesus_seurat)
+rhesus_seurat_annotated <- RenameIdents(rhesus_seurat, rhesus.cluster.ids)
+```
+
+```{r}
+# verify that the renaming of clusters has been correctly applied
+table(Idents(human_seurat_annotated))
+```
+
+```{r}
+# verify that the renaming of clusters has been correctly applied
+table(Idents(rhesus_seurat_annotated))
+```
+#Adding cluster annotation as a new metadata column - Human
+```{r}
+# Add the renamed identities to a new metadata column, e.g., "new_cluster_idents"
+human_seurat_annotated[["new_cluster_idents"]] <- Idents(human_seurat_annotated)
+
+# Check the values in the new column "new_cluster_idents"
+head(human_seurat_annotated@meta.data)
+```
+
+#Adding cluster annotation as a new metadat column - Rhesus
+```{r}
+# Add the renamed identities to a new metadata column, e.g., "new_cluster_idents"
+rhesus_seurat_annotated[["new_cluster_idents"]] <- Idents(rhesus_seurat_annotated)
+
+# Check the values in the new column "new_cluster_idents"
+head(rhesus_seurat_annotated@meta.data)
+```
+
+#Save clustered and annotated human seurat object
+```{r}
+saveRDS(human_seurat_annotated, file = "/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/Seurat_CyTOF_clustering/human_seurat_clustered_annotated.rds")
+```
+
+#Load back clustered and annotated human seurat object
+```{r}
+human_seurat_annotated <- readRDS("/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/Seurat_CyTOF_clustering/human_seurat_clustered_annotated.rds")
+```
+
+#Save clustered and annotated rhesus seurat object
+```{r}
+saveRDS(rhesus_seurat_annotated, file = "/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/Seurat_CyTOF_clustering/rhesus_seurat_clustered_annotated.rds")
+```
+
+#Load back clustered and annotated rhesus seurat object
+```{r}
+rhesus_seurat_annotated <- readRDS("/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/Seurat_CyTOF_clustering/rhesus_seurat_clustered_annotated.rds")
+```
+
+#Re-Scale all features of the CyTOF Seurat Object - Human
+#After clustering and annotation, scaling all features (both surface and phospho markers) is a good step if you want to visualize the phospho markers properly. Here's why:
+#During initial clustering, you only scaled the surface markers since they were used for clustering
+#Now that clusters are established, scaling all markers (including phospho) will help with visualization by:
+#Putting all markers on a comparable scale
+#Making the phospho marker patterns more interpretable across different clusters
+#Enabling better visualization in FeaturePlots and heatmaps
+```{r}
+# For Human
+human_all_markers <- c(human_markers, intracellular_phospho_markers)  # Combine both sets
+human_seurat_annotated_scaled <- ScaleData(human_seurat_annotated, 
+                                         features = human_all_markers)
+```
+
+#Re-Scale all features of the CyTOF Seurat Object - Rhesus
+```{r}
+# For Rhesus
+rhesus_all_markers <- c(rhesus_markers, intracellular_phospho_markers)  # Combine both sets
+rhesus_seurat_annotated_scaled <- ScaleData(rhesus_seurat_annotated, 
+                                          features = rhesus_all_markers)
+```
+
+```{r}
+#N.B Intracellular phospho signaling markers were not scaled. It was not necessary because we were not using the intracellular phospho markers to cluster the cells. We need to scale the intracellular phospho features/markers if we are going to re-cluster based on all features i.e extracellular and intracellular features. The intracellular features were only arcsin transformed by cofactor 5.
+```
+
+#Save clustered and annotated and scaled human seurat object
+```{r}
+saveRDS(human_seurat_annotated_scaled, file = "/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/Seurat_CyTOF_clustering/human_seurat_clustered_annotated_scaled.rds")
+```
+
+#Load back clustered and annotated and scaled human seurat object
+```{r}
+human_seurat_annotated_scaled <- readRDS("/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/Seurat_CyTOF_clustering/human_seurat_clustered_annotated_scaled.rds")
+```
+
+#Save clustered and annotated rhesus seurat object
+```{r}
+saveRDS(rhesus_seurat_annotated_scaled, file = "/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/Seurat_CyTOF_clustering/rhesus_seurat_clustered_annotated_scaled.rds")
+```
+
+#Load back clustered and annotated rhesus seurat object
+```{r}
+rhesus_seurat_annotated_scaled <- readRDS("/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/Seurat_CyTOF_clustering/rhesus_seurat_clustered_annotated_scaled.rds")
+```
+
+##Explore dataset
+#UMAP of annotated clusters - Human
+```{r}
+tiff("/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/Seurat_CyTOF_clustering/UMAP_human_seurat_annotated_scaled_clusters.tiff", width = 10, height = 8, units = 'in', res = 200)
+
+DimPlot(human_seurat_annotated_scaled, reduction = "umap", group.by = "new_cluster_idents", label = F, repel = T)
+
+dev.off()
+```
+
+#UMAP of annotated clusters - Rhesus
+```{r}
+tiff("/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/Seurat_CyTOF_clustering/UMAP_rhesus_seurat_annotated_scaled_clusters.tiff", width = 10, height = 8, units = 'in', res = 200)
+
+DimPlot(rhesus_seurat_annotated_scaled, reduction = "umap", group.by = "new_cluster_idents", label = F, repel = T)
+
+dev.off()
+```
+
+
+#UMAP of samples - Human
+```{r}
+tiff("/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/Seurat_CyTOF_clustering/UMAP_human_seurat_annotated_scaled_samples.tiff", width = 10, height = 8, units = 'in', res = 200)
+
+DimPlot(human_seurat_annotated_scaled, reduction = "umap", group.by = "sample", label = F, repel = T)
+
+dev.off()
+
+#DM sample has a unique Classical monocyte population that AT and YH do not have
+```
+
+#UMAP of samples - Rhesus
+```{r}
+tiff("/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/Seurat_CyTOF_clustering/UMAP_rhesus_seurat_annotated_scaled_samples.tiff", width = 10, height = 8, units = 'in', res = 200)
+
+DimPlot(rhesus_seurat_annotated_scaled, reduction = "umap", group.by = "sample", label = F, repel = T)
+
+dev.off()
+
+#355 sample has more NK cell population that 354 and 356
+#355 sample has lower CD4 and CD8 T cell populations than 354 and 356
+```
+
+#Check each marker- Human
+```{r}
+FeaturePlot(human_seurat_annotated_scaled, features = "CD4", max.cutoff = 1, reduction = "umap", label = F, repel = T)
+```
+
+#Check each marker- Rhesus
+```{r}
+FeaturePlot(rhesus_seurat_annotated_scaled, features = "CD4", max.cutoff = 1, reduction = "umap", label = F, repel = T)
+```
+
+#UMAP of cell surface markers - Human
+```{r}
+tiff("/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/Seurat_CyTOF_clustering/UMAP_human_all_cell_surface_markers.tiff", width = 28, height = 24, units = 'in', res = 200)
+
+FeaturePlot(human_seurat_annotated_scaled, features = human_markers, max.cutoff = 1, reduction = "umap")
+
+dev.off()
+```
+
+#UMAP of cell surface markers - Rhesus
+```{r}
+tiff("/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/Seurat_CyTOF_clustering/UMAP_rhesus_all_cell_surface_markers.tiff", width = 28, height = 24, units = 'in', res = 200)
+
+FeaturePlot(rhesus_seurat_annotated_scaled, features = rhesus_markers, max.cutoff = 1, reduction = "umap")
+
+dev.off()
+```
+
+#UMAP of intracellular phospho markers - Human
+```{r}
+tiff("/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/Seurat_CyTOF_clustering/UMAP_human_intracellular_phospho_markers.tiff", width = 28, height = 20, units = 'in', res = 200)
+
+FeaturePlot(human_seurat_annotated_scaled, max.cutoff = 1, features = intracellular_phospho_markers, reduction = "umap")
+
+dev.off()
+```
+
+#UMAP of intracellular phospho markers - Rhesus
+```{r}
+tiff("/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/Seurat_CyTOF_clustering/UMAP_rhesus_intracellular_phospho_markers.tiff", width = 28, height = 20, units = 'in', res = 200)
+
+FeaturePlot(rhesus_seurat_annotated_scaled, features = intracellular_phospho_markers, max.cutoff = 1, reduction = "umap")
+
+dev.off()
+```
+
+#RidgePlot for cell surface markers, group by samples - Human
+```{r}
+tiff("/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/Seurat_CyTOF_clustering/RidgePlot_human_cell_surface_markers.tiff", 
+     width = 28, height = 24, units = 'in', res = 200)
+
+RidgePlot(human_seurat_annotated_scaled, 
+          features = human_markers, 
+          group.by = "sample", 
+          stack = TRUE,
+          cols = c("#FF7F50", "#4682B4", "#9370DB"),  # Custom colors for each sample
+          fill.by = "ident",  # Changed from "sample" to "ident"
+          combine = TRUE) + 
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+    axis.text.y = element_text(size = 10),
+    axis.title = element_text(size = 12, face = "bold"),
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+    strip.text = element_text(size = 12, face = "bold"),
+    legend.position = "right",
+    legend.text = element_text(size = 10),
+    legend.title = element_text(size = 12, face = "bold")
+  ) +
+  labs(
+    title = "Expression Distribution of Cell Surface Markers Across Samples",
+    x = "Expression Level",
+    y = "Density"
+  )
+
+dev.off()
+```
+
+#RidgePlot for cell surface markers, group by samples - Rhesus
+```{r}
+tiff("/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/Seurat_CyTOF_clustering/RidgePlot_rhesus_cell_surface_markers.tiff", 
+     width = 28, height = 24, units = 'in', res = 200)
+
+RidgePlot(rhesus_seurat_annotated_scaled, 
+          features = rhesus_markers, 
+          group.by = "sample", 
+          stack = TRUE,
+          cols = c("#FF7F50", "#4682B4", "#9370DB"),  # Custom colors for each sample
+          fill.by = "ident",  # Changed from "sample" to "ident"
+          combine = TRUE) + 
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+    axis.text.y = element_text(size = 10),
+    axis.title = element_text(size = 12, face = "bold"),
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+    strip.text = element_text(size = 12, face = "bold"),
+    legend.position = "right",
+    legend.text = element_text(size = 10),
+    legend.title = element_text(size = 12, face = "bold")
+  ) +
+  labs(
+    title = "Expression Distribution of Cell Surface Markers Across Samples",
+    x = "Expression Level",
+    y = "Density"
+  )
+
+dev.off()
+```
+
+#RidgePlot of intracellular markers, group by samples - Human
+```{r}
+tiff("/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/Seurat_CyTOF_clustering/RidgePlot_human_intracellular_markers.tiff", 
+     width = 28, height = 24, units = 'in', res = 200)
+
+# Create RidgePlot
+RidgePlot(human_seurat_annotated_scaled, 
+          features = intracellular_phospho_markers,  # Your list of intracellular markers
+          group.by = "sample", 
+          stack = TRUE,
+          cols = c("#FF7F50", "#4682B4", "#9370DB"),  # Custom colors for each sample
+          fill.by = "ident",
+          combine = TRUE) + 
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+    axis.text.y = element_text(size = 10),
+    axis.title = element_text(size = 12, face = "bold"),
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+    strip.text = element_text(size = 12, face = "bold"),  # Marker names
+    legend.position = "right",
+    legend.text = element_text(size = 10),
+    legend.title = element_text(size = 12, face = "bold")
+  ) +
+  labs(
+    title = "Expression Distribution of Intracellular Markers Across Samples",
+    x = "Expression Level",
+    y = "Density"
+  )
+
+dev.off()
+```
+
+#RidgePlot of intracellular markers, group by samples - Rhesus
+```{r}
+tiff("/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/Seurat_CyTOF_clustering/RidgePlot_rhesus_intracellular_markers.tiff", 
+     width = 28, height = 24, units = 'in', res = 200)
+
+# Create RidgePlot
+RidgePlot(rhesus_seurat_annotated_scaled, 
+          features = intracellular_phospho_markers,  # Your list of intracellular markers
+          group.by = "sample", 
+          stack = TRUE,
+          cols = c("#FF7F50", "#4682B4", "#9370DB"),  # Custom colors for each sample
+          fill.by = "ident",
+          combine = TRUE) + 
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+    axis.text.y = element_text(size = 10),
+    axis.title = element_text(size = 12, face = "bold"),
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+    strip.text = element_text(size = 12, face = "bold"),  # Marker names
+    legend.position = "right",
+    legend.text = element_text(size = 10),
+    legend.title = element_text(size = 12, face = "bold")
+  ) +
+  labs(
+    title = "Expression Distribution of Intracellular Markers Across Samples",
+    x = "Expression Level",
+    y = "Density"
+  )
+
+dev.off()
+```
+
+#Heatmap for cell surface markers, group by cluster idents - Human
+```{r}
+tiff("/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/Seurat_CyTOF_clustering/Heatmap_Human_cell_surface_markers_by_cluster_idents.tiff", width = 28, height = 24, units = 'in', res = 200)
+
+DoHeatmap(human_seurat_annotated_scaled, features = human_markers, group.by = "new_cluster_idents", group.bar = TRUE, label = FALSE, draw.lines = TRUE)
+
+dev.off()
+```
+
+#Heatmap for cell surface markers, group by cluster idents - Rhesus
+```{r}
+tiff("/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/Seurat_CyTOF_clustering/Heatmap_Rhesus_cell_surface_markers_by_cluster_idents.tiff", width = 28, height = 24, units = 'in', res = 200)
+
+DoHeatmap(rhesus_seurat_annotated_scaled, features = rhesus_markers, group.by = "new_cluster_idents", group.bar = TRUE, label = FALSE, draw.lines = TRUE)
+
+dev.off()
+```
+
+
+#Heatmap for intracellular phospho markers, group by cluster idents - Human
+```{r}
+tiff("/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/Seurat_CyTOF_clustering/Heatmap_Human_phospho_markers_by_cluster_idents.tiff", width = 28, height = 24, units = 'in', res = 200)
+
+DoHeatmap(human_seurat_annotated_scaled, features = intracellular_phospho_markers, group.by = "new_cluster_idents", group.bar = TRUE, label = FALSE, draw.lines = TRUE)
+
+dev.off()
+```
+
+#Heatmap for intracellular phospho markers, group by cluster idents - Rhesus
+```{r}
+tiff("/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/Seurat_CyTOF_clustering/Heatmap_Rhesus_phospho_markers_by_cluster_idents.tiff", width = 28, height = 24, units = 'in', res = 200)
+
+DoHeatmap(rhesus_seurat_annotated_scaled, features = intracellular_phospho_markers, group.by = "new_cluster_idents", group.bar = TRUE, label = FALSE, draw.lines = TRUE)
+
+dev.off()
+```
+
+
+#Heatmap for cell surface markers, group by samples - Human
+```{r}
+tiff("/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/Seurat_CyTOF_clustering/Heatmap_Human_cell_surface_markers_by_samples.tiff", width = 28, height = 24, units = 'in', res = 200)
+
+DoHeatmap(human_seurat_annotated_scaled, features = human_markers, group.by = "sample", group.bar = TRUE, label = FALSE, draw.lines = TRUE)
+
+dev.off()
+```
+
+#Heatmap for cell surface markers, group by samples - Rhesus
+```{r}
+tiff("/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/Seurat_CyTOF_clustering/Heatmap_Rhesus_cell_surface_markers_by_samples.tiff", width = 28, height = 24, units = 'in', res = 200)
+
+DoHeatmap(rhesus_seurat_annotated_scaled, features = rhesus_markers, group.by = "sample", group.bar = TRUE, label = FALSE, draw.lines = TRUE)
+
+dev.off()
+```
+
+#Heatmap for intracellular phospho markers, group by samples - Human
+```{r}
+tiff("/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/Seurat_CyTOF_clustering/Heatmap_Human_phospho_markers_by_samples.tiff", width = 28, height = 24, units = 'in', res = 200)
+
+DoHeatmap(human_seurat_annotated_scaled, features = intracellular_phospho_markers, group.by = "sample", group.bar = TRUE, label = FALSE, draw.lines = TRUE)
+
+dev.off()
+```
+
+#Heatmap for intracellular phospho markers, group by samples - Rhesus
+```{r}
+tiff("/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/Seurat_CyTOF_clustering/Heatmap_Rhesus_phospho_markers_by_samples.tiff", width = 28, height = 24, units = 'in', res = 200)
+
+DoHeatmap(rhesus_seurat_annotated_scaled, features = intracellular_phospho_markers, group.by = "sample", group.bar = TRUE, label = FALSE, draw.lines = TRUE)
+
+dev.off()
+```
+
+
+#Find species-specific difference using all features of human vs rhesus CyTOF datasets
+```{r}
+# Comprehensive analysis of species-specific differences in CyTOF data
+
+# 1. Define markers explicitly
+# Surface markers mapping between species
+marker_mapping <- data.frame(
+  human = c("CD235a", "CD45", "CD61", "CD7", "CD33", "CD11c", 
+           "CD123", "CD14", "CD11b", "CD8", "CD4", "CD3", 
+           "CD66", "CD16", "CD1c", "BDCA3", "CD45RA", 
+           "CD161", "CCR7", "CD19", "IgM", "CD56", "HLA-DR"),
+  rhesus = c("CD233", "CD45", "CD61", "CD7", "CD33", "CD11c", 
+            "CD123", "CD14", "CD11b", "CD8", "CD4", "CD3", 
+            "CD66", "CD16", "CD1c", "BDCA3", "CD45RA", 
+            "CD161", "CCR7", "CD20", "IgM", "CD56", "HLA-DR")
+)
+
+# Phospho markers with correct nomenclature
+phospho_markers <- c(
+  "pSTAT1(Y701)", "pSTAT3(Y705)", "pSTAT4(Y693)", "pSTAT5(Y694)", "pSTAT6(Y691)",
+  "pCREB(S133)", "pMAPKAPK2(T334)", "pS6(S235-S236)", "pZAP70-Syk(Y319-Y352)",
+  "pERK1-2(T202-Y204)", "pP38-MAPK(T180-Y182)", "pPLCg2(Y579)",
+  "pTBK1/NAK(S172)", "p4EBP1(T37-T46)"
+)
+
+# Function to validate markers in Seurat object
+validate_markers <- function(seurat_obj, markers, marker_type = "markers") {
+  available_features <- rownames(GetAssayData(seurat_obj))
+  missing_markers <- setdiff(markers, available_features)
+  found_markers <- intersect(markers, available_features)
+  
+  if (length(missing_markers) > 0) {
+    warning(sprintf("Missing %d %s: %s", 
+                   length(missing_markers), 
+                   marker_type,
+                   paste(missing_markers, collapse = ", ")))
+  }
+  
+  return(found_markers)
+}
+
+# Enhanced violin plot function
+create_violin_plot <- function(seurat_obj, features, title, ncol = 4, 
+                             group.by = "new_cluster_idents") {
+  # Validate features
+  existing_features <- validate_markers(seurat_obj, features)
+  if(length(existing_features) == 0) {
+    stop(paste("None of the specified features found in the object.", 
+               "Available features:", paste(head(rownames(GetAssayData(seurat_obj))), collapse=", ")))
+  }
+  
+  # Sort features alphabetically for consistent plotting
+  existing_features <- sort(existing_features)
+  
+  # Create plot with only existing features
+  VlnPlot(
+    seurat_obj,
+    features = existing_features,
+    ncol = ncol,
+    pt.size = 0,
+    group.by = group.by
+  ) + 
+    ggtitle(paste0(title, "\n(", length(existing_features), " markers)")) +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(size = 14, face = "bold"),
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      strip.text = element_text(size = 10),
+      plot.margin = unit(c(1,1,1,1), "cm")
+    )
+}
+
+# Enhanced mean expression calculation function
+calculate_mean_expression <- function(seurat_obj, markers, group.by = "new_cluster_idents") {
+  # Validate markers
+  existing_markers <- validate_markers(seurat_obj, markers)
+  if(length(existing_markers) == 0) {
+    stop("No specified markers found in the object")
+  }
+  
+  # Get group identities
+  groups <- unique(seurat_obj[[group.by]][[1]])
+  
+  # Initialize results matrix
+  mean_expr <- matrix(0, nrow = length(existing_markers), ncol = length(groups))
+  rownames(mean_expr) <- existing_markers
+  colnames(mean_expr) <- groups
+  
+  # Calculate means
+  for (group in groups) {
+    cells <- WhichCells(seurat_obj, idents = group)
+    cell_data <- GetAssayData(seurat_obj, slot = "data")[existing_markers, cells, drop = FALSE]
+    marker_means <- rowMeans(cell_data)
+    mean_expr[, group] <- marker_means
+  }
+  
+  return(mean_expr)
+}
+
+# Create output directory
+output_dir <- "species_comparison"
+dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
+
+# Surface marker plots
+tiff(file.path(output_dir, "Species_comparison_surface_markers.tiff"),
+     width = 28, height = 24, units = 'in', res = 200)
+
+plot1 <- create_violin_plot(human_seurat_annotated_scaled, 
+                          marker_mapping$human, 
+                          "Human Surface Marker Expression")
+plot2 <- create_violin_plot(rhesus_seurat_annotated_scaled, 
+                          marker_mapping$rhesus, 
+                          "Rhesus Surface Marker Expression")
+
+gridExtra::grid.arrange(plot1, plot2, ncol = 1)
+dev.off()
+
+# Phospho marker plots
+tiff(file.path(output_dir, "Species_comparison_phospho_markers.tiff"),
+     width = 28, height = 24, units = 'in', res = 200)
+
+plot3 <- create_violin_plot(human_seurat_annotated_scaled, 
+                          phospho_markers, 
+                          "Human Phospho Marker Expression",
+                          ncol = 3)  # 3 columns for better readability
+plot4 <- create_violin_plot(rhesus_seurat_annotated_scaled, 
+                          phospho_markers, 
+                          "Rhesus Phospho Marker Expression",
+                          ncol = 3)  # 3 columns for better readability
+
+gridExtra::grid.arrange(plot3, plot4, ncol = 1)
+dev.off()
+
+# Calculate and save mean expression
+mean_expr_list <- list(
+  human_surface = calculate_mean_expression(human_seurat_annotated_scaled, marker_mapping$human),
+  rhesus_surface = calculate_mean_expression(rhesus_seurat_annotated_scaled, marker_mapping$rhesus),
+  human_phospho = calculate_mean_expression(human_seurat_annotated_scaled, phospho_markers),
+  rhesus_phospho = calculate_mean_expression(rhesus_seurat_annotated_scaled, phospho_markers)
+)
+
+# Save results
+for (name in names(mean_expr_list)) {
+  write.csv(mean_expr_list[[name]], 
+            file.path(output_dir, paste0(name, "_means.csv")))
+}
+
+# NEW CODE: Add side-by-side heatmaps without dendrograms
+
+# Load required libraries if not already loaded
+library(pheatmap)
+library(grid)
+library(gridExtra)
+
+# Function to create comparable heatmaps
+create_side_by_side_heatmaps <- function(human_data, rhesus_data, markers_human, markers_rhesus, 
+                                         title, filename, scale_by = "row") {
+  # Validate markers
+  human_markers <- intersect(rownames(human_data), markers_human)
+  rhesus_markers <- intersect(rownames(rhesus_data), markers_rhesus)
+  
+  # Get common markers (using the mapping)
+  common_markers_indices <- match(human_markers, markers_human)
+  common_markers_rhesus <- markers_rhesus[common_markers_indices[!is.na(common_markers_indices)]]
+  common_markers_rhesus <- intersect(common_markers_rhesus, rownames(rhesus_data))
+  
+  # Get corresponding human markers
+  common_markers_indices_reverse <- match(common_markers_rhesus, markers_rhesus)
+  common_markers_human <- markers_human[common_markers_indices_reverse[!is.na(common_markers_indices_reverse)]]
+  common_markers_human <- intersect(common_markers_human, rownames(human_data))
+  
+  # Extract data for common markers
+  human_subset <- human_data[common_markers_human, , drop = FALSE]
+  rhesus_subset <- rhesus_data[common_markers_rhesus, , drop = FALSE]
+  
+  # Set up the output file
+  tiff(file.path(output_dir, filename),
+       width = 14, height = 10, units = 'in', res = 300)
+  
+  # Create heatmaps with no dendrogram
+  hm1 <- pheatmap(human_subset,
+                 scale = scale_by,
+                 cluster_rows = FALSE,
+                 cluster_cols = FALSE,
+                 main = "Human",
+                 fontsize = 10,
+                 fontsize_row = 8,
+                 fontsize_col = 8,
+                 show_rownames = TRUE,
+                 show_colnames = TRUE,
+                 legend = TRUE,
+                 silent = TRUE)
+  
+  hm2 <- pheatmap(rhesus_subset,
+                 scale = scale_by,
+                 cluster_rows = FALSE,
+                 cluster_cols = FALSE,
+                 main = "Rhesus",
+                 fontsize = 10,
+                 fontsize_row = 8,
+                 fontsize_col = 8,
+                 show_rownames = TRUE,
+                 show_colnames = TRUE,
+                 legend = TRUE,
+                 silent = TRUE)
+  
+  # Add title
+  grid.arrange(
+    grobTree(
+      textGrob(title, gp = gpar(fontsize = 16, fontface = "bold"), y = 0.98)
+    ),
+    arrangeGrob(hm1[[4]], hm2[[4]], ncol = 2),
+    heights = c(0.1, 0.9)
+  )
+  
+  dev.off()
+  
+  # Return the used markers for reference
+  return(list(human_markers = common_markers_human, rhesus_markers = common_markers_rhesus))
+}
+
+# Create surface marker heatmaps
+markers_used_surface <- create_side_by_side_heatmaps(
+  mean_expr_list$human_surface, 
+  mean_expr_list$rhesus_surface,
+  marker_mapping$human,
+  marker_mapping$rhesus,
+  "Surface Marker Expression Comparison",
+  "Surface_markers_comparison_heatmap.tiff"
+)
+
+# Create phospho marker heatmaps
+markers_used_phospho <- create_side_by_side_heatmaps(
+  mean_expr_list$human_phospho, 
+  mean_expr_list$rhesus_phospho,
+  phospho_markers,
+  phospho_markers,  # Same markers for both species
+  "Phospho Marker Expression Comparison",
+  "Phospho_markers_comparison_heatmap.tiff"
+)
+
+# Print summary
+cat("\nAnalysis complete. Files saved in:", output_dir, "\n")
+cat("Generated files:\n")
+cat("1. Species_comparison_surface_markers.tiff\n")
+cat("2. Species_comparison_phospho_markers.tiff\n")
+cat("3. Surface_markers_comparison_heatmap.tiff\n")
+cat("4. Phospho_markers_comparison_heatmap.tiff\n")
+for (name in names(mean_expr_list)) {
+  cat(sprintf("5. %s_means.csv\n", name))
+}
+
+# Print markers used in heatmaps
+cat("\nMarkers used in surface marker heatmap:\n")
+cat("Human:", paste(markers_used_surface$human_markers, collapse = ", "), "\n")
+cat("Rhesus:", paste(markers_used_surface$rhesus_markers, collapse = ", "), "\n")
+
+cat("\nMarkers used in phospho marker heatmap:\n")
+cat("Human:", paste(markers_used_phospho$human_markers, collapse = ", "), "\n")
+cat("Rhesus:", paste(markers_used_phospho$rhesus_markers, collapse = ", "), "\n")
+```
+
+
+```{r}
+# Comprehensive analysis of species-specific differences in CyTOF data
+
+# 1. Define markers explicitly
+# Surface markers mapping between species
+marker_mapping <- data.frame(
+  human = c("CD235a", "CD45", "CD61", "CD7", "CD33", "CD11c", 
+           "CD123", "CD14", "CD11b", "CD8", "CD4", "CD3", 
+           "CD66", "CD16", "CD1c", "BDCA3", "CD45RA", 
+           "CD161", "CCR7", "CD19", "IgM", "CD56", "HLA-DR"),
+  rhesus = c("CD233", "CD45", "CD61", "CD7", "CD33", "CD11c", 
+            "CD123", "CD14", "CD11b", "CD8", "CD4", "CD3", 
+            "CD66", "CD16", "CD1c", "BDCA3", "CD45RA", 
+            "CD161", "CCR7", "CD20", "IgM", "CD56", "HLA-DR")
+)
+
+# Phospho markers with correct nomenclature
+phospho_markers <- c(
+  "pSTAT1(Y701)", "pSTAT3(Y705)", "pSTAT4(Y693)", "pSTAT5(Y694)", "pSTAT6(Y691)",
+  "pCREB(S133)", "pMAPKAPK2(T334)", "pS6(S235-S236)", "pZAP70-Syk(Y319-Y352)",
+  "pERK1-2(T202-Y204)", "pP38-MAPK(T180-Y182)", "pPLCg2(Y579)",
+  "pTBK1/NAK(S172)", "p4EBP1(T37-T46)"
+)
+
+# Function to validate markers in Seurat object
+validate_markers <- function(seurat_obj, markers, marker_type = "markers") {
+  available_features <- rownames(GetAssayData(seurat_obj))
+  missing_markers <- setdiff(markers, available_features)
+  found_markers <- intersect(markers, available_features)
+  
+  if (length(missing_markers) > 0) {
+    warning(sprintf("Missing %d %s: %s", 
+                   length(missing_markers), 
+                   marker_type,
+                   paste(missing_markers, collapse = ", ")))
+  }
+  
+  return(found_markers)
+}
+
+# Enhanced violin plot function
+create_violin_plot <- function(seurat_obj, features, title, ncol = 4, 
+                             group.by = "new_cluster_idents") {
+  # Validate features
+  existing_features <- validate_markers(seurat_obj, features)
+  if(length(existing_features) == 0) {
+    stop(paste("None of the specified features found in the object.", 
+               "Available features:", paste(head(rownames(GetAssayData(seurat_obj))), collapse=", ")))
+  }
+  
+  # Sort features alphabetically for consistent plotting
+  existing_features <- sort(existing_features)
+  
+  # Create plot with only existing features
+  VlnPlot(
+    seurat_obj,
+    features = existing_features,
+    ncol = ncol,
+    pt.size = 0,
+    group.by = group.by
+  ) + 
+    ggtitle(paste0(title, "\n(", length(existing_features), " markers)")) +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(size = 14, face = "bold"),
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      strip.text = element_text(size = 10),
+      plot.margin = unit(c(1,1,1,1), "cm")
+    )
+}
+
+# Enhanced mean expression calculation function
+calculate_mean_expression <- function(seurat_obj, markers, group.by = "new_cluster_idents") {
+  # Validate markers
+  existing_markers <- validate_markers(seurat_obj, markers)
+  if(length(existing_markers) == 0) {
+    stop("No specified markers found in the object")
+  }
+  
+  # Get group identities
+  groups <- unique(seurat_obj[[group.by]][[1]])
+  
+  # Initialize results matrix
+  mean_expr <- matrix(0, nrow = length(existing_markers), ncol = length(groups))
+  rownames(mean_expr) <- existing_markers
+  colnames(mean_expr) <- groups
+  
+  # Calculate means
+  for (group in groups) {
+    cells <- WhichCells(seurat_obj, idents = group)
+    cell_data <- GetAssayData(seurat_obj, slot = "data")[existing_markers, cells, drop = FALSE]
+    marker_means <- rowMeans(cell_data)
+    mean_expr[, group] <- marker_means
+  }
+  
+  return(mean_expr)
+}
+
+# Create output directory
+output_dir <- "species_comparison"
+dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
+
+# Surface marker plots
+tiff(file.path(output_dir, "Species_comparison_surface_markers.tiff"),
+     width = 28, height = 24, units = 'in', res = 200)
+
+plot1 <- create_violin_plot(human_seurat_annotated_scaled, 
+                          marker_mapping$human, 
+                          "Human Surface Marker Expression")
+plot2 <- create_violin_plot(rhesus_seurat_annotated_scaled, 
+                          marker_mapping$rhesus, 
+                          "Rhesus Surface Marker Expression")
+
+gridExtra::grid.arrange(plot1, plot2, ncol = 1)
+dev.off()
+
+# Phospho marker plots
+tiff(file.path(output_dir, "Species_comparison_phospho_markers.tiff"),
+     width = 28, height = 24, units = 'in', res = 200)
+
+plot3 <- create_violin_plot(human_seurat_annotated_scaled, 
+                          phospho_markers, 
+                          "Human Phospho Marker Expression",
+                          ncol = 3)  # 3 columns for better readability
+plot4 <- create_violin_plot(rhesus_seurat_annotated_scaled, 
+                          phospho_markers, 
+                          "Rhesus Phospho Marker Expression",
+                          ncol = 3)  # 3 columns for better readability
+
+gridExtra::grid.arrange(plot3, plot4, ncol = 1)
+dev.off()
+
+# Calculate and save mean expression
+mean_expr_list <- list(
+  human_surface = calculate_mean_expression(human_seurat_annotated_scaled, marker_mapping$human),
+  rhesus_surface = calculate_mean_expression(rhesus_seurat_annotated_scaled, marker_mapping$rhesus),
+  human_phospho = calculate_mean_expression(human_seurat_annotated_scaled, phospho_markers),
+  rhesus_phospho = calculate_mean_expression(rhesus_seurat_annotated_scaled, phospho_markers)
+)
+
+# Save results
+for (name in names(mean_expr_list)) {
+  write.csv(mean_expr_list[[name]], 
+            file.path(output_dir, paste0(name, "_means.csv")))
+}
+
+# Print summary
+cat("\nAnalysis complete. Files saved in:", output_dir, "\n")
+cat("Generated files:\n")
+cat("1. Species_comparison_surface_markers.tiff\n")
+cat("2. Species_comparison_phospho_markers.tiff\n")
+for (name in names(mean_expr_list)) {
+  cat(sprintf("3. %s_means.csv\n", name))
+}
+```
+
+```{r}
+# 5. Create comparative heatmaps
+create_comparative_heatmap <- function(human_means, rhesus_means, output_file) {
+  # Create annotation colors for species
+  annotation_colors <- list(
+    Species = c(Human = "#FF7F50", Rhesus = "#4682B4")
+  )
+  
+  # Identify markers present in both species
+  shared_markers <- intersect(rownames(human_means), rownames(rhesus_means))
+  
+  # Subset matrices to shared markers only
+  human_means_subset <- human_means[shared_markers, , drop = FALSE]
+  rhesus_means_subset <- rhesus_means[shared_markers, , drop = FALSE]
+  
+  # Add species prefix to column names
+  colnames(human_means_subset) <- paste0("Human_", colnames(human_means_subset))
+  colnames(rhesus_means_subset) <- paste0("Rhesus_", colnames(rhesus_means_subset))
+  
+  # Combine matrices
+  combined_means <- cbind(human_means_subset, rhesus_means_subset)
+  
+  # Create species annotation
+  species_annotation <- data.frame(
+    Species = c(rep("Human", ncol(human_means_subset)), 
+                rep("Rhesus", ncol(rhesus_means_subset)))
+  )
+  rownames(species_annotation) <- colnames(combined_means)
+  
+  # Create and save heatmap
+  pheatmap(combined_means,
+           annotation_col = species_annotation,
+           annotation_colors = annotation_colors,
+           show_colnames = TRUE,
+           cluster_cols = TRUE,
+           cluster_rows = TRUE,
+           scale = "row",
+           main = "Species Comparison of Marker Expression by Cell Type",
+           fontsize = 8,
+           cellwidth = 15,
+           cellheight = 12,
+           na_col = "grey",
+           filename = output_file)
+}
+
+# Create separate heatmaps for surface and phospho markers
+# Surface markers - ensuring proper mapping between species
+surface_means_human <- human_means[human_markers,]
+surface_means_rhesus <- rhesus_means[rhesus_markers,]
+
+# Ensure markers are properly mapped between species
+names_mapping <- data.frame(
+  human = human_markers,
+  rhesus = rhesus_markers
+)
+
+# Rename rhesus markers to match human markers for comparison
+rownames(surface_means_rhesus) <- names_mapping$human[match(rownames(surface_means_rhesus), names_mapping$rhesus)]
+
+create_comparative_heatmap(
+  surface_means_human,
+  surface_means_rhesus,
+  file.path(output_dir, "Surface_markers_comparison_heatmap.tiff")
+)
+
+# Phospho markers (these are the same between species)
+phospho_means_human <- human_means[intracellular_phospho_markers,]
+phospho_means_rhesus <- rhesus_means[intracellular_phospho_markers,]
+
+create_comparative_heatmap(
+  phospho_means_human,
+  phospho_means_rhesus,
+  file.path(output_dir, "Phospho_markers_comparison_heatmap.tiff")
+)
+```
+
+```{r}
+# 6. Statistical comparison of cell type proportions
+# Function to calculate cell type proportions
+get_cell_proportions <- function(seurat_obj) {
+  props <- table(seurat_obj$new_cluster_idents) / length(seurat_obj$new_cluster_idents) * 100
+  return(as.data.frame(props))
+}
+
+# Get proportions for both species
+human_proportions <- get_cell_proportions(human_seurat_annotated_scaled)
+rhesus_proportions <- get_cell_proportions(rhesus_seurat_annotated_scaled)
+
+# Combine and format the data
+proportion_comparison <- merge(
+  human_proportions, 
+  rhesus_proportions, 
+  by = "Var1", 
+  all = TRUE, 
+  suffixes = c("_Human", "_Rhesus")
+)
+names(proportion_comparison)[1] <- "Cell_Type"
+
+# Replace NA with 0
+proportion_comparison[is.na(proportion_comparison)] <- 0
+
+# Save proportions data
+write.csv(proportion_comparison,
+          file.path(output_dir, "Cell_type_proportions.csv"),
+          row.names = FALSE)
+
+# Create proportion comparison plot
+proportion_long <- tidyr::pivot_longer(
+  proportion_comparison,
+  cols = c("Freq_Human", "Freq_Rhesus"),
+  names_to = "Species",
+  values_to = "Proportion"
+)
+
+# Plot and save
+tiff(file.path(output_dir, "Cell_type_proportions.tiff"),
+     width = 12, height = 8, units = 'in', res = 200)
+
+ggplot(proportion_long, 
+       aes(x = Cell_Type, y = Proportion, fill = Species)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    plot.title = element_text(hjust = 0.5)
+  ) +
+  labs(
+    title = "Cell Type Proportions: Human vs Rhesus",
+    x = "Cell Type",
+    y = "Proportion (%)"
+  ) +
+  scale_fill_manual(
+    values = c("Freq_Human" = "#FF7F50", "Freq_Rhesus" = "#4682B4"),
+    labels = c("Freq_Human" = "Human", "Freq_Rhesus" = "Rhesus")
+  )
+
+dev.off()
+```
+
+
+```{r}
+# 7. Differential Expression Analysis
+# Load required package
+library(ggrepel)
+
+# Function to perform differential expression analysis
+perform_diff_expression <- function(human_obj, rhesus_obj, cell_type, output_dir) {
+  # Set identities to new_cluster_idents
+  Idents(human_obj) <- human_obj$new_cluster_idents
+  Idents(rhesus_obj) <- rhesus_obj$new_cluster_idents
+  
+  # Get cells of specified type from each species
+  human_cells <- WhichCells(human_obj, idents = cell_type)
+  rhesus_cells <- WhichCells(rhesus_obj, idents = cell_type)
+  
+  # Check if cells were found
+  if(length(human_cells) == 0 || length(rhesus_cells) == 0) {
+    warning(paste("No cells found for", cell_type, "in one or both species"))
+    return(NULL)
+  }
+  
+  # Split markers into surface and phospho
+  surface_markers_df <- data.frame(
+    human = human_markers,
+    rhesus = rhesus_markers
+  )
+  
+  phospho_markers <- intracellular_phospho_markers
+  
+  # Initialize results dataframe
+  results <- data.frame(
+    Marker = character(),
+    Mean_Human = numeric(),
+    Mean_Rhesus = numeric(),
+    Log2FC = numeric(),
+    P_Value = numeric(),
+    stringsAsFactors = FALSE
+  )
+  
+  # Process surface markers
+  for(i in 1:nrow(surface_markers_df)) {
+    human_marker <- surface_markers_df$human[i]
+    rhesus_marker <- surface_markers_df$rhesus[i]
+    
+    # Get expression values
+    human_expr <- GetAssayData(human_obj, slot = "data")[human_marker, human_cells]
+    rhesus_expr <- GetAssayData(rhesus_obj, slot = "data")[rhesus_marker, rhesus_cells]
+    
+    # Calculate statistics
+    mean_human <- mean(human_expr)
+    mean_rhesus <- mean(rhesus_expr)
+    log2fc <- log2(mean_human + 1) - log2(mean_rhesus + 1)
+    
+    # Perform t-test
+    t_test <- t.test(human_expr, rhesus_expr)
+    
+    # Add to results
+    results <- rbind(results, data.frame(
+      Marker = human_marker,
+      Mean_Human = mean_human,
+      Mean_Rhesus = mean_rhesus,
+      Log2FC = log2fc,
+      P_Value = t_test$p.value
+    ))
+  }
+  
+  # Process phospho markers
+  for(marker in phospho_markers) {
+    # Get expression values
+    human_expr <- GetAssayData(human_obj, slot = "data")[marker, human_cells]
+    rhesus_expr <- GetAssayData(rhesus_obj, slot = "data")[marker, rhesus_cells]
+    
+    # Calculate statistics
+    mean_human <- mean(human_expr)
+    mean_rhesus <- mean(rhesus_expr)
+    log2fc <- log2(mean_human + 1) - log2(mean_rhesus + 1)
+    
+    # Perform t-test
+    t_test <- t.test(human_expr, rhesus_expr)
+    
+    # Add to results
+    results <- rbind(results, data.frame(
+      Marker = marker,
+      Mean_Human = mean_human,
+      Mean_Rhesus = mean_rhesus,
+      Log2FC = log2fc,
+      P_Value = t_test$p.value
+    ))
+  }
+  
+  # Adjust p-values
+  results$Adj_P_Value <- p.adjust(results$P_Value, method = "BH")
+  
+  # Add significance labels
+  results$Significance <- ifelse(results$Adj_P_Value < 0.05, 
+                               ifelse(results$Adj_P_Value < 0.01, 
+                                     ifelse(results$Adj_P_Value < 0.001, 
+                                           "***", "**"), "*"), "ns")
+  
+  # Save results
+  write.csv(results,
+            file.path(output_dir, paste0("Differential_Expression_", 
+                                       gsub(" ", "_", cell_type), ".csv")),
+            row.names = FALSE)
+  
+  return(results)
+}
+
+# Get shared cell types
+shared_cell_types <- intersect(
+  unique(human_seurat_annotated_scaled$new_cluster_idents),
+  unique(rhesus_seurat_annotated_scaled$new_cluster_idents)
+)
+
+# Perform differential expression analysis for each cell type
+diff_expr_results <- list()
+for(cell_type in shared_cell_types) {
+  cat("Processing", cell_type, "\n")
+  result <- perform_diff_expression(
+    human_seurat_annotated_scaled,
+    rhesus_seurat_annotated_scaled,
+    cell_type,
+    output_dir
+  )
+  if(!is.null(result)) {
+    diff_expr_results[[cell_type]] <- result
+  }
+}
+
+# Create summary visualizations of differential expression
+for(cell_type in names(diff_expr_results)) {
+  results <- diff_expr_results[[cell_type]]
+  
+  # Skip if no results
+  if(is.null(results) || nrow(results) == 0) {
+    warning(paste("No results for", cell_type))
+    next
+  }
+  
+  # Create volcano plot
+  tiff(file.path(output_dir, paste0("Volcano_plot_", gsub(" ", "_", cell_type), ".tiff")),
+       width = 10, height = 8, units = 'in', res = 200)
+  
+  volcano_plot <- ggplot(results, aes(x = Log2FC, y = -log10(Adj_P_Value))) +
+    geom_point(aes(color = Significance)) +
+    geom_text_repel(
+      data = subset(results, abs(Log2FC) > 1 & Adj_P_Value < 0.05),
+      aes(label = Marker),
+      size = 3,
+      max.overlaps = 20
+    ) +
+    theme_minimal() +
+    labs(
+      title = paste("Differential Expression:", cell_type),
+      x = "Log2 Fold Change (Human/Rhesus)",
+      y = "-log10(Adjusted P-value)"
+    ) +
+    geom_vline(xintercept = c(-1, 1), linetype = "dashed", color = "gray") +
+    geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "gray") +
+    scale_color_manual(values = c(
+      "***" = "#FF0000",
+      "**" = "#FF6666",
+      "*" = "#FFCCCC",
+      "ns" = "gray"
+    ))
+  
+  print(volcano_plot)
+  dev.off()
+  
+  # Create heatmap of significant markers
+  sig_markers <- results$Marker[results$Adj_P_Value < 0.05]
+  
+  if(length(sig_markers) > 0) {
+    # Split significant markers into surface and phospho
+    sig_surface_markers <- intersect(sig_markers, human_markers)
+    sig_phospho_markers <- intersect(sig_markers, intracellular_phospho_markers)
+    
+    # Get corresponding rhesus surface markers
+    sig_surface_markers_rhesus <- rhesus_markers[match(sig_surface_markers, human_markers)]
+    
+    # Combine all markers in correct order
+    sig_markers_human <- c(sig_surface_markers, sig_phospho_markers)
+    sig_markers_rhesus <- c(sig_surface_markers_rhesus, sig_phospho_markers)
+    
+    # Get cells of this type
+    human_cells <- WhichCells(human_seurat_annotated_scaled, idents = cell_type)
+    rhesus_cells <- WhichCells(rhesus_seurat_annotated_scaled, idents = cell_type)
+    
+    # Get expression data for significant markers
+    human_data <- GetAssayData(human_seurat_annotated_scaled, slot = "data")[sig_markers_human, human_cells, drop = FALSE]
+    rhesus_data <- GetAssayData(rhesus_seurat_annotated_scaled, slot = "data")[sig_markers_rhesus, rhesus_cells, drop = FALSE]
+    
+    # Make sure rownames match for visualization
+    rownames(rhesus_data) <- sig_markers_human
+    
+    # Combine and scale data
+    combined_data <- cbind(human_data, rhesus_data)
+    scaled_data <- t(scale(t(combined_data)))
+    
+    # Create annotation
+    column_ann <- data.frame(
+      Species = c(rep("Human", length(human_cells)), rep("Rhesus", length(rhesus_cells)))
+    )
+    rownames(column_ann) <- colnames(combined_data)
+    
+    # Create heatmap
+    tiff(file.path(output_dir, paste0("Heatmap_significant_markers_", gsub(" ", "_", cell_type), ".tiff")),
+         width = 12, height = 8, units = 'in', res = 200)
+    
+    pheatmap(scaled_data,
+             annotation_col = column_ann,
+             show_colnames = FALSE,
+             main = paste("Significant Markers -", cell_type),
+             annotation_colors = list(
+               Species = c(Human = "#FF7F50", Rhesus = "#4682B4")
+             ))
+    
+    dev.off()
+  }
+}
+
+# Create summary table
+summary_table <- data.frame(
+  Cell_Type = character(),
+  Total_Markers = integer(),
+  Significant_Markers = integer(),
+  Up_in_Human = integer(),
+  Up_in_Rhesus = integer(),
+  stringsAsFactors = FALSE
+)
+
+for(cell_type in names(diff_expr_results)) {
+  results <- diff_expr_results[[cell_type]]
+  sig_results <- results[results$Adj_P_Value < 0.05,]
+  
+  summary_table <- rbind(summary_table, data.frame(
+    Cell_Type = cell_type,
+    Total_Markers = nrow(results),
+    Significant_Markers = nrow(sig_results),
+    Up_in_Human = sum(sig_results$Log2FC > 0),
+    Up_in_Rhesus = sum(sig_results$Log2FC < 0)
+  ))
+}
+
+# Save summary table
+write.csv(summary_table,
+          file.path(output_dir, "Differential_Expression_Summary.csv"),
+          row.names = FALSE)
+```
+
+
+###export each sample out as individual csv files
+###CyTOF datasets has annotated clusters of single cells that can be used to bridge when performing single cell matching within each QBC dataset
+###each sample has 12k single cells each
+
+```{r}
+# Function to export a single sample's data
+export_sample_data <- function(seurat_obj, sample_name, output_dir, species) {
+  # Get cells for this sample
+  sample_cells <- colnames(seurat_obj)[seurat_obj$sample == sample_name]
+  
+  # Get all markers (surface + phospho)
+  if(species == "Human") {
+    all_markers <- c(human_markers, intracellular_phospho_markers)
+  } else {
+    all_markers <- c(rhesus_markers, intracellular_phospho_markers)
+  }
+  
+  # Extract expression data
+  expr_data <- GetAssayData(seurat_obj, slot = "data")[all_markers, sample_cells]
+  
+  # Convert to dataframe and transpose
+  expr_df <- as.data.frame(t(expr_data))
+  
+  # Add cell IDs 
+  expr_df$Cell_ID <- rownames(expr_df)
+  
+  # Add sample information
+  expr_df$Sample <- sample_name
+  
+  # Add CyTOF annotation
+  expr_df$CyTOF_annotation <- seurat_obj$new_cluster_idents[sample_cells]
+  
+  # Reorder columns to put metadata at the start
+  metadata_cols <- c("Cell_ID", "Sample", "CyTOF_annotation")
+  expr_df <- expr_df[, c(metadata_cols, setdiff(colnames(expr_df), metadata_cols))]
+  
+  # Create filename
+  filename <- file.path(output_dir, paste0(species, "_", sample_name, "_expression_data.csv"))
+  
+  # Export to CSV
+  write.csv(expr_df, file = filename, row.names = FALSE)
+  
+  cat("Exported", species, "sample:", sample_name, "\n")
+  cat("Number of cells:", nrow(expr_df), "\n")
+  cat("Number of features:", ncol(expr_df) - length(metadata_cols), "\n\n")
+}
+
+# Create output directory if it doesn't exist
+output_dir <- "/Users/tzekaitan/Nolan Lab Dropbox/Aaron Tan/QBC/Seurat_CyTOF_clustering/exported_expression_data"
+dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
+
+# Export Human samples
+human_samples <- unique(human_seurat_annotated_scaled$sample)
+cat("Exporting Human samples...\n")
+for(sample in human_samples) {
+  export_sample_data(human_seurat_annotated_scaled, sample, output_dir, "Human")
+}
+
+# Export Rhesus samples
+rhesus_samples <- unique(rhesus_seurat_annotated_scaled$sample)
+cat("Exporting Rhesus samples...\n")
+for(sample in rhesus_samples) {
+  export_sample_data(rhesus_seurat_annotated_scaled, sample, output_dir, "Rhesus")
+}
+
+# Create summary of exported files
+summary_df <- data.frame(
+  Species = c(rep("Human", length(human_samples)), rep("Rhesus", length(rhesus_samples))),
+  Sample = c(human_samples, rhesus_samples),
+  Cells = c(
+    sapply(human_samples, function(x) sum(human_seurat_annotated_scaled$sample == x)),
+    sapply(rhesus_samples, function(x) sum(rhesus_seurat_annotated_scaled$sample == x))
+  ),
+  Features = c(
+    rep(length(c(human_markers, intracellular_phospho_markers)), length(human_samples)),
+    rep(length(c(rhesus_markers, intracellular_phospho_markers)), length(rhesus_samples))
+  )
+)
+
+# Export summary
+write.csv(summary_df, 
+          file.path(output_dir, "sample_export_summary.csv"), 
+          row.names = FALSE)
+
+# Print summary
+cat("\nExport Summary:\n")
+print(summary_df)
+```
