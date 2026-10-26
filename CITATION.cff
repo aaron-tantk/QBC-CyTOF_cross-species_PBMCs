@@ -1,0 +1,91 @@
+cff-version: 1.2.0
+message: Cite the exact code commit used and the version-specific data DOI. The v1.1.0
+  additions on this branch are an unpublished candidate; the DOI below identifies
+  the original published data version.
+type: software
+title: QBC–CyTOF cross-species PBMC analysis code
+authors:
+- family-names: Tan
+  given-names: Aaron Tze Kai
+  affiliation: Institute of Stem Cell Biology and Regenerative Medicine, Stanford
+    University School of Medicine, Stanford, CA, USA; Department of Pediatrics, Division
+    of Hematology, Oncology, Stem Cell Transplantation and Regenerative Medicine,
+    Stanford University School of Medicine, Stanford, CA, USA
+  orcid: https://orcid.org/0000-0002-7359-5303
+- family-names: Taylor
+  given-names: Kevin
+  affiliation: BioLegend, 8999 Biolegend Way, San Diego, CA, USA
+- family-names: Zhang
+  given-names: Fan
+  affiliation: Scale Biosciences Inc., 5601 Oberlin Dr Ste 110, San Diego, CA, USA
+- family-names: Bai
+  given-names: Yunhao
+  affiliation: Department of Microbiology and Immunology, Stanford University School
+    of Medicine, Stanford, CA, USA; Department of Pathology, Stanford University School
+    of Medicine, Stanford, CA, USA
+- family-names: Zhu
+  given-names: Bokai
+  affiliation: Department of Microbiology and Immunology, Stanford University School
+    of Medicine, Stanford, CA, USA; Department of Pathology, Stanford University School
+    of Medicine, Stanford, CA, USA
+  orcid: https://orcid.org/0000-0003-3599-9419
+- family-names: Baertsch
+  given-names: Marc A.
+  affiliation: Department of Microbiology and Immunology, Stanford University School
+    of Medicine, Stanford, CA, USA; Department of Pathology, Stanford University School
+    of Medicine, Stanford, CA, USA
+  orcid: https://orcid.org/0000-0002-4000-6904
+- family-names: Anronikov
+  given-names: Sasha
+  affiliation: Department of Anesthesiology, Perioperative & Pain Medicine, Stanford
+    University, Stanford, CA, USA
+  orcid: https://orcid.org/0000-0001-7854-1809
+- family-names: Bjornson-Hooper
+  given-names: Zachary
+  affiliation: Department of Microbiology and Immunology, Stanford University School
+    of Medicine, Stanford, CA, USA; Department of Pathology, Stanford University School
+    of Medicine, Stanford, CA, USA
+  orcid: https://orcid.org/0000-0002-0565-6805
+- family-names: Ho
+  given-names: Debbie L. L.
+  affiliation: Department of Bioengineering, Stanford University School of Medicine,
+    Stanford, CA, USA
+  orcid: https://orcid.org/0000-0001-9799-4838
+- family-names: Trejo
+  given-names: Angelica
+  affiliation: Department of Microbiology and Immunology, Stanford University School
+    of Medicine, Stanford, CA, USA; Department of Pathology, Stanford University School
+    of Medicine, Stanford, CA, USA
+- family-names: Nakauchi
+  given-names: Hiromitsu
+  affiliation: Institute of Stem Cell Biology and Regenerative Medicine, Stanford
+    University School of Medicine, Stanford, CA, USA
+  orcid: https://orcid.org/0000-0002-9841-6973
+- family-names: Czechowicz
+  given-names: Agnieszka
+  affiliation: Institute of Stem Cell Biology and Regenerative Medicine, Stanford
+    University School of Medicine, Stanford, CA, USA; Department of Pediatrics, Division
+    of Hematology, Oncology, Stem Cell Transplantation and Regenerative Medicine,
+    Stanford University School of Medicine, Stanford, CA, USA
+  orcid: https://orcid.org/0000-0003-2909-2669
+- family-names: Steemers
+  given-names: Frank
+  affiliation: Scale Biosciences Inc., 5601 Oberlin Dr Ste 110, San Diego, CA, USA
+- family-names: Nolan
+  given-names: Garry P.
+  affiliation: Department of Microbiology and Immunology, Stanford University School
+    of Medicine, Stanford, CA, USA; Department of Pathology, Stanford University School
+    of Medicine, Stanford, CA, USA
+  orcid: https://orcid.org/0000-0002-8862-9043
+- family-names: McIlwain
+  given-names: David R.
+  affiliation: Department of Microbiology and Immunology, University of Nevada, Reno
+    School of Medicine, Reno, NV, USA
+  orcid: https://orcid.org/0000-0002-2537-0273
+repository-code: https://github.com/aaron-tantk/QBC-CyTOF_cross-species_PBMCs
+license: MIT
+identifiers:
+- type: doi
+  value: 10.5281/zenodo.23406825
+  description: Original published data version (1.0.0), not the candidate code/data
+    update

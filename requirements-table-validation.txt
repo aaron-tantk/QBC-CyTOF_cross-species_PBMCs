@@ -1,0 +1,5 @@
+# Observed and tested candidate table-reconstruction environment.
+# This is not a lockfile for historical matching, R graph fits or model training.
+numpy==2.1.0
+pandas==2.3.1
+scipy==1.15.0

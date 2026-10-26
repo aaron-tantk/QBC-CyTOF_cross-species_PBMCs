@@ -1,0 +1,154 @@
+{
+  "package": "qbc_github_upload_v1.1.0_v6",
+  "target_branch": "release/v1.1.0-manuscript-aligned",
+  "base_commit": "5c2509ff26b09a57b50e43ed60beddc2e5328e5e",
+  "scope": "Documentation alignment and source packaging; no scientific refits or remote writes.",
+  "baseline_file_count": 50,
+  "changed_baseline_files_excluding_root_checksums": [
+    "README.md",
+    "code/figure6/fit_networks.R",
+    "code/stimulation/README.md",
+    "code/stimulation/scripts/fig4_stats.py",
+    "docs/reproduction.md",
+    "docs/source_manifest.json"
+  ],
+  "new_files": [
+    "docs/release_scope.md",
+    "docs/upload_verification.json"
+  ],
+  "python_syntax_and_non_docstring_AST": {
+    "status": "PASS",
+    "files": 16
+  },
+  "r_syntax_and_parsed_expression_identity": {
+    "status": "PASS",
+    "files": 9
+  },
+  "cli_help_checks": [
+    {
+      "path": "code/figure5/analysis_gmcsf.py",
+      "status": "PASS"
+    },
+    {
+      "path": "code/figure5/plot_gmcsf.py",
+      "status": "PASS"
+    },
+    {
+      "path": "code/figure5/prepare_source.py",
+      "status": "PASS"
+    },
+    {
+      "path": "code/figure5/run_graph.py",
+      "status": "PASS"
+    },
+    {
+      "path": "code/figure6/summarize_networks.py",
+      "status": "PASS"
+    },
+    {
+      "path": "code/stimulation/scripts/assemble_fused.py",
+      "status": "PASS"
+    },
+    {
+      "path": "code/stimulation/scripts/build_cellfuse_data.py",
+      "status": "PASS"
+    },
+    {
+      "path": "code/stimulation/scripts/build_cellfuse_pbmc.py",
+      "status": "PASS"
+    },
+    {
+      "path": "code/stimulation/scripts/build_cytof_balanced.py",
+      "status": "PASS"
+    },
+    {
+      "path": "code/stimulation/scripts/fig4_stats.py",
+      "status": "PASS"
+    },
+    {
+      "path": "code/stimulation/scripts/prepare_pbmc.py",
+      "status": "PASS"
+    },
+    {
+      "path": "code/stimulation/scripts/run_cellfuse.py",
+      "status": "PASS"
+    },
+    {
+      "path": "code/stimulation/scripts/run_mario.py",
+      "status": "PASS"
+    },
+    {
+      "path": "code/validate_release.py",
+      "status": "PASS"
+    },
+    {
+      "path": "code/stimulation/scripts/annotate_cytof.R",
+      "status": "PASS"
+    },
+    {
+      "path": "code/stimulation/scripts/build_qbc_clr.R",
+      "status": "PASS"
+    },
+    {
+      "path": "code/stimulation/scripts/cluster_cytof.R",
+      "status": "PASS"
+    },
+    {
+      "path": "code/stimulation/scripts/cluster_fused.R",
+      "status": "PASS"
+    },
+    {
+      "path": "code/stimulation/scripts/concordance_harmony.R",
+      "status": "PASS"
+    }
+  ],
+  "compact_result_files_byte_identical": {
+    "status": "PASS",
+    "files": [
+      "results/figure5/graph_coverage.csv",
+      "results/figure5/population_changes.csv",
+      "results/figure6/fig6_rewiring_summary.csv",
+      "results/figure6/network_inventory.csv",
+      "results/stimulation/cross_method_concordance_summary.csv",
+      "results/stimulation/fig4_cross_species.csv",
+      "results/stimulation/fig4_cross_species_pbmc.csv"
+    ]
+  },
+  "historical_receipts_source_hashes_and_marker_panel": "byte-identical",
+  "privacy_pattern_scan": {
+    "status": "PASS",
+    "checks": [
+      "absolute_local_paths",
+      "private_key",
+      "github_token",
+      "aws_access_key"
+    ],
+    "limit": "Pattern scan and small-file inventory only; not a guarantee of de-identification."
+  },
+  "remote_snapshot_overlap": {
+    "LICENSE": "unchanged",
+    "README.md": "updated"
+  },
+  "legacy_files_not_in_upload_remain_in_repository": [
+    ".gitignore",
+    "code/Seurat-CyTOF-QBC_fused_dataset_clustering.Rmd",
+    "code/Seurat-CyTOF-QBC_fused_dataset_clustering_stimulations.Rmd",
+    "code/Seurat-CyTOF-clustering.Rmd",
+    "code/Seurat-QBC-clustering.Rmd",
+    "code/mario-pY-CyTOF_stim-QBC-matching_v2.ipynb",
+    "markers/cytof_cluster_proportions_statistical_tests.csv",
+    "markers/cytof_only_human_top20_markers.csv",
+    "markers/cytof_only_rhesus_top20_markers.csv",
+    "markers/fused_human_top20_markers.csv",
+    "markers/fused_rhesus_top20_markers.csv",
+    "markers/qbc_cluster_proportions_statistical_tests.csv",
+    "processed_data/cytof_only/human_seurat_clustered_annotated.rds",
+    "processed_data/cytof_only/human_seurat_clustered_annotated_scaled.rds",
+    "processed_data/cytof_only/rhesus_seurat_clustered_annotated.rds",
+    "processed_data/cytof_only/rhesus_seurat_clustered_annotated_scaled.rds",
+    "processed_data/fused/human_seurat_annotated.rds",
+    "processed_data/fused/rhesus_seurat_annotated.rds"
+  ],
+  "scientific_validation": "validation_summary.json and stimulation verification receipts are preserved historical checks, not newly rerun full-data validations. No stochastic fitting/permutations performed.",
+  "hash_manifest": "SHA256SUMS covers every package file except itself."
+}
