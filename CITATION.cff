@@ -1,9 +1,11 @@
 cff-version: 1.2.0
-message: Cite the exact code commit used and the version-specific data DOI. The v1.1.0
-  additions on this branch are an unpublished candidate; the DOI below identifies
-  the original published data version.
+message: Cite the exact code commit used and the associated version-specific dataset
+  DOI. Dataset version 1.1.0 is published at 10.5281/zenodo.23676187; this is a data
+  identifier, not a DOI for the software. See docs/releases/v1.1.0.md for code
+  provenance and GitHub tag/release status.
 type: software
 title: QBC–CyTOF cross-species PBMC analysis code
+version: 1.1.0
 authors:
 - family-names: Tan
   given-names: Aaron Tze Kai
@@ -86,6 +88,8 @@ repository-code: https://github.com/aaron-tantk/QBC-CyTOF_cross-species_PBMCs
 license: MIT
 identifiers:
 - type: doi
+  value: 10.5281/zenodo.23676187
+  description: Associated published dataset version 1.1.0 (data DOI, not a software DOI).
+- type: doi
   value: 10.5281/zenodo.23406825
-  description: Original published data version (1.0.0), not the candidate code/data
-    update
+  description: Historical original dataset version 1.0.0, not the v1.1.0 data additions.

@@ -2,7 +2,7 @@
 
 Analysis code for human and rhesus macaque QBC/CyTOF profiling and fusion with a separate whole-blood CyTOF stimulation reference.
 
-**Candidate v1.1.0 — draft, not a published release.** The original data version is available at [DOI 10.5281/zenodo.23406825](https://doi.org/10.5281/zenodo.23406825). That DOI does **not** identify the new candidate files. Cite the exact data version and code commit actually used.
+**Code version 1.1.0; manuscript-v6-aligned resource.** Dataset version 1.1.0 is published at [DOI 10.5281/zenodo.23676187](https://doi.org/10.5281/zenodo.23676187). This is a **dataset DOI**, not a software DOI. Cite the exact data version and code commit actually used. See [v1.1.0 notes](docs/releases/v1.1.0.md) for code provenance and the GitHub tag/release handoff.
 
 ## Study design
 
@@ -15,14 +15,14 @@ Analysis code for human and rhesus macaque QBC/CyTOF profiling and fusion with a
 
 Consistent with manuscript v6, the saved analyses use each matched **CyTOF source-reference cell's population label** (fine labels for Figure 5; broad labels for Figures 4 and 6). They do **not** use fused-cluster plurality labels for those population summaries. Source and plurality labels disagree for 4,283/20,862 human and 6,781/14,414 rhesus primary rows. Human plurality transfer produces seven populations, whereas the saved fine source labels produce eight.
 
-The candidate preserves the saved results rather than silently relabeling cells or recomputing statistics. Table S5 plurality labels remain available as a **cluster annotation audit**, not as the labels used for downstream population summaries. These source additions and documentation align with v6; legacy notebooks are retained, not certified as complete end-to-end reproductions. See [reproduction coverage](docs/reproduction.md) and [release scope and analysis stages](docs/release_scope.md).
+This resource preserves the saved results rather than silently relabeling cells or recomputing statistics. Table S5 plurality labels remain available as a **cluster annotation audit**, not as the labels used for downstream population summaries. These source additions and documentation align with v6; legacy notebooks are retained, not certified as complete end-to-end reproductions. See [reproduction coverage](docs/reproduction.md) and [release scope and analysis stages](docs/release_scope.md).
 
 ## Contents
 
 | Location | Purpose |
 |---|---|
 | `code/figure5/` | Two-condition score preparation, four separate 174-feature trajectories, descriptive donor summaries and marker associations |
-| `code/figure6/` | Reproduce summaries of 36 archived support tables; optional inference source, not refitted for this candidate |
+| `code/figure6/` | Reproduce summaries of 36 archived support tables; optional inference source, not refitted for this update |
 | `code/data/` | Export existing fused assay objects with explicit label provenance |
 | `results/figure5/` | Compact effect and coverage summaries; all eight verified tables in `data/results/figure5/` |
 | `results/figure6/` | Verified rewiring summary; full majority-edge tables in `data/results/figure6/` |
@@ -32,7 +32,34 @@ The candidate preserves the saved results rather than silently relabeling cells 
 
 Additional portable stimulation preparation/matching/statistics entrypoints are in [`code/stimulation/`](code/stimulation/README.md), with scope described in [reproduction coverage](docs/reproduction.md). To use saved inputs, decompress `data/upstream_inputs/*.csv.gz` to a separate project's `data/` and copy saved `*matches.csv` files into its `mario_out/`. Do not rerun matching merely to reconstruct the saved fused tables.
 
-Large candidate processed matrices, matching maps and fitted trajectories are distributed separately as `qbc_derived_data_v1.1.0_candidate.tar.gz`. They are **not yet on the published Zenodo record**. Extract this archive as `data/` beside the repository.
+## Download and verify saved data
+
+Large processed matrices, matching maps and fitted trajectories are distributed separately in the [published dataset v1.1.0](https://doi.org/10.5281/zenodo.23676187), not in GitHub release assets. Download **all six** derived-data archives:
+
+```text
+qbc_derived_data_v1.1.0_v6_part1of6.tar.gz
+qbc_derived_data_v1.1.0_v6_part2of6.tar.gz
+qbc_derived_data_v1.1.0_v6_part3of6.tar.gz
+qbc_derived_data_v1.1.0_v6_part4of6.tar.gz
+qbc_derived_data_v1.1.0_v6_part5of6.tar.gz
+qbc_derived_data_v1.1.0_v6_part6of6.tar.gz
+```
+
+Place them in a `downloads/` directory under this repository root, together with the deposit's `README.txt`, `data_manifest.txt`, and `SHA256SUMS.txt`. Verify the eight outer checksum entries (six archives plus those two documents), then extract every part into this **same repository root**:
+
+```bash
+(cd downloads && sha256sum -c SHA256SUMS.txt)
+for i in 1 2 3 4 5 6; do
+  tar -xzf "downloads/qbc_derived_data_v1.1.0_v6_part${i}of6.tar.gz" -C .
+done
+(cd data && sha256sum -c SHA256SUMS)
+```
+
+These are normal independent archives, not binary fragments: do **not** concatenate them or create separate part-named extraction folders. Extraction order does not matter; all six are needed for the complete `data/`. Part 1 contains the global internal checksum list. Extract into a clean data location rather than mixing a different dataset version into an existing `data/`.
+
+The repository's own `SHA256SUMS` is a separate curated code/documentation/table manifest. Zenodo's outer `SHA256SUMS.txt` does not hash the 19 retained original source archives; their historical MD5 provenance is documented separately in the deposit manifest and `docs/existing_raw_files.csv`.
+
+Zenodo pins the exact analysis-source snapshot [`f0050c36f9f24ccad25b23c52b259c31346df92c`](https://github.com/aaron-tantk/QBC-CyTOF_cross-species_PBMCs/tree/f0050c36f9f24ccad25b23c52b259c31346df92c). The subsequent GitHub finalization changes documentation, citation metadata and related checksums, not scientific code or result bytes. The [original dataset DOI](https://doi.org/10.5281/zenodo.23406825) identifies version 1.0.0, not the v1.1.0 additions.
 
 ## Reproduce saved Figure 5 tables without refitting
 
@@ -64,4 +91,4 @@ Compare with `data/results/figure6/`. Majority directions summarize bootstrap ou
 
 ## Licensing
 
-Code: MIT, see `LICENSE`. Data and numerical result tables: CC-BY 4.0, see `DATA_LICENSE.md`. Original third-party datasets retain their attribution requirements. No manuscript, rendered figures or editorial revision notes are included in the candidate additions.
+Code: MIT, see `LICENSE`. Data and numerical result tables: CC-BY 4.0, see `DATA_LICENSE.md`. Original third-party datasets retain their attribution requirements. No manuscript, rendered figures or editorial revision notes are included in these additions.

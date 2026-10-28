@@ -1,6 +1,6 @@
 # Reproduction coverage and label provenance
 
-This candidate provides saved inputs/results and portable analysis sources. It is **not a claim of exact end-to-end reproduction of every manuscript statement**. No scientific results were recomputed with changed labels or methods.
+This resource provides saved inputs/results and portable analysis sources. It is **not a claim of exact end-to-end reproduction of every manuscript statement**. No scientific results were recomputed with changed labels or methods. Saved data are published at [dataset DOI 10.5281/zenodo.23676187](https://doi.org/10.5281/zenodo.23676187); follow the [six-part download and extraction instructions](../README.md#download-and-verify-saved-data) before running the commands below. Validation results described here are historical saved checks, not reruns performed during GitHub documentation finalization.
 
 ## Coverage map
 
@@ -9,7 +9,7 @@ This candidate provides saved inputs/results and portable analysis sources. It i
 | QBC workflow/technical demonstration | Raw files remain in the original archive where provided. No reconstruction from sequencing reads or claim of reproducing every technical-demonstration panel is added here. |
 | Modality-specific clustering and frequencies | Existing `Seurat-CyTOF-clustering.Rmd`, `Seurat-QBC-clustering.Rmd`, marker tables and legacy processed objects remain unchanged. These contain historical paths/settings; full agreement with final manuscript counts and normalization is not certified. Manuscript v6 distinguishes the basal CyTOF display (12,000 cells per donor; 36,000 per species), QBC display and QBC matching export; see the [stage inventory](release_scope.md). |
 | Basal cross-modal fusion | Original MARIO notebook and basal fused R Markdown remain as legacy entrypoints. The new stimulation exports must not be substituted for the unstimulated Figure 3 resource. |
-| Stimulation input preparation/matching | Portable recovered sources, saved matching indices/embeddings and corrected primary/sensitivity fused exports are provided. Matching is not rerun for this candidate. Exact refits require the original environment and random state. |
+| Stimulation input preparation/matching | Portable recovered sources, saved matching indices/embeddings and corrected primary/sensitivity fused exports are provided. Matching was not rerun for this update. Exact refits require the original environment and random state. |
 | Match-quality/comparator validation | Saved cluster, anchor-correlation and cross-method concordance tables are included. Availability of each recovered comparator source is identified in the upstream instructions; no new benchmark is claimed. |
 | Figure 4 response statistics | All 375 primary and 480 sensitivity paired-test effect/p/BH values verified against saved tables. They use source-reference broad lineage, pre-joint-CLR CyTOF-side values and donor means. Saved 10,000-permutation results were retained, not rerun. No reference-cell deduplication is retroactively imposed. |
 | Figure 5 | All eight numerical tables reproduced from exported primary joint-CLR assays; independent validation checked scores, source values, roots, donor eligibility/effects, rankings and all 134 marker associations per species. Saved graph fits are reused. |
@@ -28,7 +28,7 @@ Figure 5 uses fine source labels (including `Classical_monocytes`, `Activated_de
 - Every released matrix starts with `cell_id`, followed by 174 measurements: 134 `-QBC` and 40 `-CyTOF`.
 - `*_pre_joint_CLR.csv.gz` contains the values before the additional joint CLR step. These are **not raw counts/intensities**: QBC input is already per-donor CLR transformed, and CyTOF input is arcsinh transformed with cofactor 5.
 - `*_joint_CLR.csv.gz` contains the per-row joint CLR assay used for Figure 5 and Figure 6. For a fused row x, the checked operation is `log1p(x / exp(sum(log1p(x))/174))`.
-- Metadata align exactly by `cell_id`. `reference_id` identifies reused CyTOF reference cells. Donors use neutral codes with no identity lookup in this candidate.
+- Metadata align exactly by `cell_id`. `reference_id` identifies reused CyTOF reference cells. Donors use neutral codes with no identity lookup in these derived exports.
 - `qbc_row_id`/`cytof_row_id` are zero-based row positions in the unshuffled source tables. Matching-map `row_idx_0`/`row_idx_1` refer instead to the shuffled MARIO inputs. Do not join these columns directly without reconstructing the source shuffle/filter.
 - Primary and whole-blood-sensitivity data must not be pooled. The same QBC cell can appear across the two alternative designs.
 - `matching/` includes the original match-index and embedding tables. Embedding_0 is QBC-side and embedding_1 CyTOF-side, already aligned in matched-pair row order; index reconstruction is specified in the assembly source.

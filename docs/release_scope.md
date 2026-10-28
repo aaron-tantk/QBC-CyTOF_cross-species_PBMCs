@@ -1,9 +1,11 @@
-# v1.1.0 candidate: scope and analysis stages
+# v1.1.0: scope and analysis stages
 
-This source addition documents the saved analyses described in manuscript v6.
-It is a draft source package, not a published GitHub release or a newly assigned
-Zenodo version. The original data DOI does not identify these candidate additions.
-Existing legacy repository materials remain in place.
+This resource documents the saved analyses described in manuscript v6.
+Dataset version 1.1.0 is published at
+https://doi.org/10.5281/zenodo.23676187; the original dataset DOI identifies
+version 1.0.0, not these additions. Existing legacy repository materials remain
+in place. See [v1.1.0 notes](releases/v1.1.0.md) for the original code snapshot,
+documentation-only finalization, and the owner's GitHub tag/release handoff.
 
 ## Distinguish datasets and stages
 
@@ -51,18 +53,24 @@ reagent table includes 134 antigen reagents and six isotype controls.
   first averages repeated links within reference cell; Figure 4 retains its
   saved fused-row donor aggregation. These methods are not silently harmonized.
 
-## What this upload changes
+## Source alignment and documentation finalization
 
-Documentation is synchronized with v6, including source labels, stage-specific
-counts, intracellular-node terminology and primary/sensitivity CLI selection.
-The only edits to Python/R analysis source are explanatory docstrings/comments;
-scientific executable logic and compact result-table bytes are preserved.
-Current file hashes are in `SHA256SUMS`; historical source hashes and scientific
-validation receipts remain distinct from the upload-package checks.
+The source snapshot `f0050c36f9f24ccad25b23c52b259c31346df92c`, pinned by
+Zenodo, synchronized documentation with v6, including source labels,
+stage-specific counts, intracellular-node terminology and primary/sensitivity
+CLI selection. Its Python/R edits relative to the preceding source package
+were explanatory docstrings/comments. This subsequent finalization changes
+only documentation, citation metadata and related checksums; Python/R source
+and compact result-table bytes remain identical to that pinned snapshot.
+Current file hashes are in the repository's curated `SHA256SUMS`; historical
+source hashes, `docs/upload_verification.json` and scientific validation
+receipts describe earlier checks, not new scientific runs.
 
 No matching, clustering, UMAP, trajectory fitting, bootstrap fitting or permutation
-testing was rerun for this upload. Large processed matrices, matching maps and
-saved graph fits remain in the separate candidate derived-data archive. The
+testing was rerun for this finalization. Large processed matrices, matching maps
+and saved graph fits are supplied as six independently extractable derived-data
+archives in published dataset v1.1.0. Extract all six into the same repository
+root to reconstruct one `data/`; see the [download instructions](../README.md#download-and-verify-saved-data). The
 available portable sources and deterministic summary routes improve coverage,
 but do not establish complete end-to-end reproduction of every manuscript panel.
 See [reproduction coverage](reproduction.md) and [environment limits](environment.md).
