@@ -1,0 +1,51 @@
+{
+  "classification": "Observed installed environment for this source port; NOT proven original versions or a tested lockfile",
+  "original_complete_environment": "unknown",
+  "original_complete_RNG_state": "unknown; no global seed added",
+  "core_python": "3.11.13",
+  "core_python_packages": {
+    "numpy": "2.1.0",
+    "pandas": "2.3.1",
+    "scipy": "1.15.0",
+    "scikit-learn": "1.7.1",
+    "statsmodels": "0.14.6",
+    "pyMARIO": "0.0.2"
+  },
+  "R_observed_session": [
+    "R version 4.4.2 (2024-10-31) ",
+    "Seurat 5.5.1 ",
+    "SeuratObject 5.4.0 ",
+    "data.table 1.18.6.1 ",
+    "dplyr 1.2.1 ",
+    "harmony 2.0.5 ",
+    "aricode 1.1.0 ",
+    "FNN 1.1.4.1"
+  ],
+  "MARIO": {
+    "url": "https://github.com/shuxiaoc/mario-py.git",
+    "vcs_info": {
+      "commit_id": "0888d6e270330c50352ef52e509b1655ab4cb9c4",
+      "vcs": "git"
+    }
+  },
+  "MARIO_match_py_sha256": "d7775ae37021bfbc2f23086e97b5f6798bc0f5c0b5c1ef94eef83bde2692487c",
+  "CellFuse": {
+    "source": "https://github.com/karadavis-lab/CellFuse",
+    "installed_R_package_version": "0.1.0",
+    "installed_RemoteSha": "cb2e34048db15bf0c1429dbb89cca5c6dfa0ee48",
+    "python_funcs_py_sha256": "e057cad0d1c77e9d00bd6008699c1286a995ed9ef9d0adc9d8a5f594824b2328",
+    "observed_python_environment": {
+      "python": "3.10.22",
+      "packages": {
+        "numpy": "2.2.6",
+        "pandas": "2.3.3",
+        "scipy": "1.15.2",
+        "scikit-learn": "1.7.2",
+        "torch": "2.13.0",
+        "matplotlib": "3.10.9",
+        "seaborn": "0.13.2"
+      }
+    }
+  },
+  "comparator_validation": "Upstream identifiers and callable signatures inspected; no stochastic comparator execution"
+}

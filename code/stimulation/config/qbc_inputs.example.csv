@@ -1,0 +1,7 @@
+species,donor,path
+human,human_qbc_01,../raw/qbc/human_01.csv
+human,human_qbc_02,../raw/qbc/human_02.csv
+human,human_qbc_03,../raw/qbc/human_03.csv
+rhesus,rhesus_qbc_01,../raw/qbc/rhesus_01.csv
+rhesus,rhesus_qbc_02,../raw/qbc/rhesus_02.csv
+rhesus,rhesus_qbc_03,../raw/qbc/rhesus_03.csv

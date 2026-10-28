@@ -1,0 +1,75 @@
+{
+  "purpose": "deterministic portable-code verification, not scientific reruns",
+  "checks": [
+    {
+      "check": "syntax_and_CLI_help_missing_paths",
+      "status": "pass"
+    },
+    {
+      "check": "Table_S4_unique_markers",
+      "n": 59,
+      "status": "pass"
+    },
+    {
+      "check": "real_saved_match_subset_assembly",
+      "species": "human",
+      "tag": "full",
+      "n_pairs": 24,
+      "status": "pass",
+      "rtol_atol": 1e-12
+    },
+    {
+      "check": "real_saved_match_subset_assembly",
+      "species": "human",
+      "tag": "pbmc",
+      "n_pairs": 24,
+      "status": "pass",
+      "rtol_atol": 1e-12
+    },
+    {
+      "check": "real_saved_match_subset_assembly",
+      "species": "rhesus",
+      "tag": "full",
+      "n_pairs": 24,
+      "status": "pass",
+      "rtol_atol": 1e-12
+    },
+    {
+      "check": "real_saved_match_subset_assembly",
+      "species": "rhesus",
+      "tag": "pbmc",
+      "n_pairs": 24,
+      "status": "pass",
+      "rtol_atol": 1e-12
+    },
+    {
+      "check": "MARIO_3000_row_input_order_and_features_full_PBMC_both_species",
+      "status": "pass",
+      "stochastic_matching_called": false
+    },
+    {
+      "check": "Figure4_two_saved_eligible_donor_mean_tests",
+      "status": "pass",
+      "permutations_called": false
+    },
+    {
+      "check": "CyTOF_real_1200_row_preparation_source_equivalence",
+      "status": "pass",
+      "n_input": 1200
+    },
+    {
+      "check": "QBC_CLR_real_16_cells_per_species_against_saved_source",
+      "status": "pass",
+      "rtol_atol": 1e-12
+    }
+  ],
+  "not_run": [
+    "MARIO matching",
+    "Seurat clustering/UMAP",
+    "Harmony integration",
+    "CellFuse training/prediction",
+    "Figure4 10000-permutation analyses"
+  ],
+  "data_packaged": false,
+  "private_donor_mapping_packaged": false
+}

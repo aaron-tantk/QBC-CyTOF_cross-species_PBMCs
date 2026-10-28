@@ -1,0 +1,142 @@
+[
+  {
+    "path": "code/data/export_existing_objects.R",
+    "sha256": "799b000211afe6bbcbdc305b44d84350e66b0537e45486a95c7c74844a65ac28"
+  },
+  {
+    "path": "code/figure5/analysis_gmcsf.py",
+    "sha256": "154aad4b0ad953d50149f1118ab1e1f73b1ffeb886d11119c13f34565ee1d980",
+    "historical_source_sha256": "18d0cc4c3901edf3fb470b14bae6d14c5eb1b50a99c56a5d8756b3fb4e844fba",
+    "byte_identical_to_historical_source": false
+  },
+  {
+    "path": "code/figure5/fit_trajectories.R",
+    "sha256": "932ffdd076b7b3b280b99c5e1c37b3806bf85813a6b1031e2e67eff8e245e7c4",
+    "historical_source_sha256": "932ffdd076b7b3b280b99c5e1c37b3806bf85813a6b1031e2e67eff8e245e7c4",
+    "byte_identical_to_historical_source": true
+  },
+  {
+    "path": "code/figure5/plot_gmcsf.py",
+    "sha256": "8df865f16e0fe78d3f49ce259d0b1f3f7069417dd3f66fcd2c9b0ee42b858b37",
+    "historical_source_sha256": "8df865f16e0fe78d3f49ce259d0b1f3f7069417dd3f66fcd2c9b0ee42b858b37",
+    "byte_identical_to_historical_source": true
+  },
+  {
+    "path": "code/figure5/prepare_source.py",
+    "sha256": "431c3d4f37659436b75380e4eb50e88eae0f9f7b116797c8321e356f9f1560c9"
+  },
+  {
+    "path": "code/figure5/run_graph.py",
+    "sha256": "2b8c6592baaf632f17658886b8b227018451eeb93afc9dab48bdda9e6ceeaab6",
+    "historical_source_sha256": "2b8c6592baaf632f17658886b8b227018451eeb93afc9dab48bdda9e6ceeaab6",
+    "byte_identical_to_historical_source": true
+  },
+  {
+    "path": "code/figure5/verify_analysis.py",
+    "sha256": "4b99f3e6586ea4a5513f501eae0388eb32d0e5780611074463a2ba8c979abb4a",
+    "historical_source_sha256": "4b99f3e6586ea4a5513f501eae0388eb32d0e5780611074463a2ba8c979abb4a",
+    "byte_identical_to_historical_source": true
+  },
+  {
+    "path": "code/figure6/fit_networks.R",
+    "sha256": "0bb6fcdeb892c39b5fdeac723104cb3de78db5b8dfd0add0ba9a03725dd2b777"
+  },
+  {
+    "path": "code/figure6/summarize_networks.py",
+    "sha256": "8cb870e5d748d7f104204ae4be1ea87f80cb00f84e5918eaafd0b15a06155747"
+  },
+  {
+    "path": "code/stimulation/README.md",
+    "sha256": "a99c8219bcb0a4c0374b636bfd312e707c3618c2d23f134c3008abae1b2efc02",
+    "historical_source_sha256": "49fd0287012ca07e51da65baeb250c37f87ddbd9b5bf0ff173afbe4e474732b2",
+    "byte_identical_to_historical_source": false
+  },
+  {
+    "path": "code/stimulation/config/qbc_inputs.example.csv",
+    "sha256": "f2bb322cf11ffb5364ad75683ae0293d093ff299558332b11050c89a9c6e8880"
+  },
+  {
+    "path": "code/stimulation/markers/Table_S4_cross_species_59_markers.csv",
+    "sha256": "49c4402b0ab981283c1032e9958996b6d6fb3f9a884e03e72281612597b2225a"
+  },
+  {
+    "path": "code/stimulation/provenance/dependencies_observed.json",
+    "sha256": "fe02ea7ff32c8ab56054be6a778be6cb132de9d67ece9eb7fd548fbc05ca03ca"
+  },
+  {
+    "path": "code/stimulation/provenance/source_sha256.tsv",
+    "sha256": "ad421f1231a4f42969047b58b86b9c3acce02f6441a6f81889a829ab52b99a75"
+  },
+  {
+    "path": "code/stimulation/scripts/annotate_cytof.R",
+    "sha256": "19dcab9d0246c8104ccb5590085ea7b80e52a2a814d36d27f22c55dea7a61a8e"
+  },
+  {
+    "path": "code/stimulation/scripts/assemble_fused.py",
+    "sha256": "6309bc9f4a89f193dcfa45eb095fd35d8d4e47aef5a3569e8614ef0d59801b31"
+  },
+  {
+    "path": "code/stimulation/scripts/build_cellfuse_data.py",
+    "sha256": "bc6b895e5983baf82cf9b11abbf97e690e9305d093affac7a797db59a968dc11"
+  },
+  {
+    "path": "code/stimulation/scripts/build_cellfuse_pbmc.py",
+    "sha256": "95471ace484ed3fa54b87b66fd92c9e82e865e2cda9937cfee6415697af86926"
+  },
+  {
+    "path": "code/stimulation/scripts/build_cytof_balanced.py",
+    "sha256": "dbe2f352453cd09fa6562f75c4f75f85dfebffb42995b9446746ca48c3ae2589"
+  },
+  {
+    "path": "code/stimulation/scripts/build_qbc_clr.R",
+    "sha256": "400e5c6fd90dc1ee71bc8e8008ebbab2e764489c5118d9b1e1a5be88fb5d3e77"
+  },
+  {
+    "path": "code/stimulation/scripts/cluster_cytof.R",
+    "sha256": "a0b8a831b19ad444c40c891fb06af14a652465e794286853780ce9abaf2350b1"
+  },
+  {
+    "path": "code/stimulation/scripts/cluster_fused.R",
+    "sha256": "0989baf461cb4b21714def16ddb1d7d1564a7be3532500afb957589ab6e634e3"
+  },
+  {
+    "path": "code/stimulation/scripts/concordance_harmony.R",
+    "sha256": "6aea43a043739202a60a776a775ddfc22c19303b03a447de7dd10a18fae0f539"
+  },
+  {
+    "path": "code/stimulation/scripts/fig4_stats.py",
+    "sha256": "557a6b43841fab32429a5e86ae744334fe9c83048c3cb6de76b5c780e7c621f5"
+  },
+  {
+    "path": "code/stimulation/scripts/portable.R",
+    "sha256": "cdb737c01090fe1ab06d4a15ea0c56d2c00aee979606d63a1a3458ab93142477"
+  },
+  {
+    "path": "code/stimulation/scripts/portable.py",
+    "sha256": "01c46020f08965692e44d481579bd50690b66ed5fb7d5a14e58c32473e047fc4"
+  },
+  {
+    "path": "code/stimulation/scripts/prepare_pbmc.py",
+    "sha256": "a0d3d440fa3e02eb99a81fea5b72008c973ae244a80d83d0403700c1b245c312"
+  },
+  {
+    "path": "code/stimulation/scripts/run_cellfuse.py",
+    "sha256": "be12ce9375ab6f38fe7350bd08f3935af7140c1973457da8acc713e67555fb9f"
+  },
+  {
+    "path": "code/stimulation/scripts/run_mario.py",
+    "sha256": "678072d41016a30fd93412378510822981100c2c0c98e723af691e17ff81487e"
+  },
+  {
+    "path": "code/stimulation/verification/receipt.json",
+    "sha256": "33757306cf89bf4749b7f2b6405db3e59414e1e4a79ff81e0abb09dbf82452b1"
+  },
+  {
+    "path": "code/stimulation/verification/source_label_attachment.json",
+    "sha256": "5d7e74501cdd671aaeb781df3dbe5022339d1389302fa22e669c16c725f2bdb2"
+  },
+  {
+    "path": "code/validate_release.py",
+    "sha256": "fad667923ab3e5c3da6e7d5134526fe7d226910c788ad186eea18fad0fd8b5d3"
+  }
+]
