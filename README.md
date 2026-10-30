@@ -1,13 +1,13 @@
 # QBC–CyTOF cross-species PBMC resource
 
-Analysis code for human and rhesus macaque QBC/CyTOF profiling and fusion with a separate whole-blood CyTOF stimulation reference.
+Analysis code for human and rhesus macaque QBC/CyTOF profiling and fusion with a CyTOF cohort reference.
 
 **Code version 1.1.0; manuscript-v6-aligned resource.** Dataset version 1.1.0 is published at [DOI 10.5281/zenodo.23676187](https://doi.org/10.5281/zenodo.23676187). This is a **dataset DOI**, not a software DOI. Cite the exact data version and code commit actually used. See [v1.1.0 notes](docs/releases/v1.1.0.md) for code provenance and the GitHub tag/release handoff.
 
 ## Study design
 
-- QBC: unstimulated PBMCs from three human and three rhesus macaque donors.
-- Stimulation reference: a separate published whole-blood CyTOF cohort of 46 human and 15 rhesus donors under Basal, CD40L and GM-CSF conditions.
+- QBC: PBMCs from three human and three rhesus macaque donors.
+- CyTOF eference: a separate published CyTOF cohort of 46 human and 15 rhesus donors under Basal, CD40L and GM-CSF conditions.
 - MARIO links cells across assays and different individuals; fused measurements are not measurements of the same physical cell. Stimulation-associated signaling transferred from the reference is not direct evidence that QBC specimens were stimulated.
 - Primary stimulation fusion uses a PBMC-restricted reference: 20,862 human and 14,414 rhesus fused rows. Whole-blood-reference sensitivity data contain 20,550 and 13,501 rows.
 
